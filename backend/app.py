@@ -67,24 +67,50 @@ def setup_realsense_filters(pipeline_profile):
     """Setup RealSense post-processing filters for better depth quality"""
     global depth_filters
     
-    # Spatial filter - reduces noise
-    depth_filters['spatial'] = rs.spatial_filter()
-    depth_filters['spatial'].set_option(rs.option.filter_magnitude, 2)
-    depth_filters['spatial'].set_option(rs.option.filter_smooth_alpha, 0.5)
-    depth_filters['spatial'].set_option(rs.option.filter_smooth_delta, 20)
-    
-    # Temporal filter - reduces flickering
-    depth_filters['temporal'] = rs.temporal_filter()
-    depth_filters['temporal'].set_option(rs.option.filter_smooth_alpha, 0.4)
-    depth_filters['temporal'].set_option(rs.option.filter_smooth_delta, 20)
-    
-    # Hole filling filter - fills holes in depth data
-    depth_filters['hole_filling'] = rs.hole_filling_filter()
-    depth_filters['hole_filling'].set_option(rs.option.holes_fill, 1)  # Fill from farthest
-    
-    # Decimation filter - reduces resolution but improves performance
-    depth_filters['decimation'] = rs.decimation_filter()
-    depth_filters['decimation'].set_option(rs.option.filter_magnitude, 2)
+    try:
+        # Spatial filter - reduces noise
+        depth_filters['spatial'] = rs.spatial_filter()
+        try:
+            if hasattr(rs.option, 'filter_magnitude'):
+                depth_filters['spatial'].set_option(rs.option.filter_magnitude, 2)
+            if hasattr(rs.option, 'filter_smooth_alpha'):
+                depth_filters['spatial'].set_option(rs.option.filter_smooth_alpha, 0.5)
+            if hasattr(rs.option, 'filter_smooth_delta'):
+                depth_filters['spatial'].set_option(rs.option.filter_smooth_delta, 20)
+        except Exception as e:
+            print(f"⚠️ Spatial filter options not available: {e}")
+        
+        # Temporal filter - reduces flickering
+        depth_filters['temporal'] = rs.temporal_filter()
+        try:
+            if hasattr(rs.option, 'filter_smooth_alpha'):
+                depth_filters['temporal'].set_option(rs.option.filter_smooth_alpha, 0.4)
+            if hasattr(rs.option, 'filter_smooth_delta'):
+                depth_filters['temporal'].set_option(rs.option.filter_smooth_delta, 20)
+        except Exception as e:
+            print(f"⚠️ Temporal filter options not available: {e}")
+        
+        # Hole filling filter - fills holes in depth data
+        depth_filters['hole_filling'] = rs.hole_filling_filter()
+        try:
+            if hasattr(rs.option, 'holes_fill'):
+                depth_filters['hole_filling'].set_option(rs.option.holes_fill, 1)  # Fill from farthest
+        except Exception as e:
+            print(f"⚠️ Hole filling filter options not available: {e}")
+        
+        # Decimation filter - reduces resolution but improves performance
+        depth_filters['decimation'] = rs.decimation_filter()
+        try:
+            if hasattr(rs.option, 'filter_magnitude'):
+                depth_filters['decimation'].set_option(rs.option.filter_magnitude, 2)
+        except Exception as e:
+            print(f"⚠️ Decimation filter options not available: {e}")
+            
+        print("✅ RealSense depth filters configured (with available options).")
+        
+    except Exception as e:
+        print(f"⚠️ Could not setup depth filters: {e}")
+        depth_filters = {}  # Boş bırak, filtresiz çalışsın
     
     print("✅ RealSense depth filters configured successfully.")
 
