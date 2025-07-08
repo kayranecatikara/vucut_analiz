@@ -359,7 +359,7 @@ def stream_frames():
 
 # --- SocketIO Events ---
 @socketio.on('connect')
-def handle_connect():
+def handle_connect(auth):
     print("✅ WebSocket connection established!")
 
 @socketio.on('disconnect')
@@ -369,7 +369,7 @@ def handle_disconnect():
     print("❌ WebSocket connection closed!")
 
 @socketio.on('start_video')
-def handle_start_video():
+def handle_start_video(data):
     global streaming, analysis_thread
     if not streaming:
         streaming = True
@@ -377,7 +377,7 @@ def handle_start_video():
         emit('stream_started', {'type': 'stream_started'})
 
 @socketio.on('stop_video')
-def handle_stop_video():
+def handle_stop_video(data):
     global streaming
     streaming = False
     emit('stream_stopped', {'type': 'stream_stopped'})
