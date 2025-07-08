@@ -1,29 +1,22 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Camera, Activity, Users, Zap, AlertCircle } from 'lucide-react';
+import { Camera, Activity, Users, Zap, AlertCircle, Play, Square, Clock, Target, Utensils } from 'lucide-react';
 import { io } from 'socket.io-client';
 
 function App() {
   const [socket, setSocket] = useState(null);
-  const [analysis, setAnalysis] = useState({
-    omuz_genisligi: 0,
-    bel_genisligi: 0,
-    omuz_bel_orani: 0,
-    vucut_tipi: 'Analiz Bekleniyor',
-    mesafe: 0,
-    confidence: 0
-  });
+  const [testResults, setTestResults] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState({
     connected: false,
     message: 'Bağlantı bekleniyor...',
     timestamp: Date.now()
   });
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [frameRate, setFrameRate] = useState(0);
-  const [lastFrameTime, setLastFrameTime] = useState(Date.now());
-  const [frameCount, setFrameCount] = useState(0);
+  const [testStatus, setTestStatus] = useState({
+    running: false,
+    timeLeft: 0,
+    completed: false
+  });
 
   const imageRef = useRef(null);
-  const canvasRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
 
   // WebSocket bağlantısı ve otomatik yeniden bağlanma
@@ -44,21 +37,53 @@ function App() {
         setSocket(ws);
       });
 
-      ws.on('video_frame', (data) => {
-        updateVideoFrame(data.frame || data);
-        updateFrameRate();
+      ws.on('test_frame', (data) => {
+        updateVideoFrame(data.frame);
+        setTestStatus(prev => ({
+          ...prev,
+          timeLeft: data.time_left || 0
+        }));
       });
 
-      ws.on('analyze_result', (data) => {
-        updateAnalysisData(data.data || data);
+      ws.on('test_started', (data) => {
+        setTestStatus({
+          running: true,
+          timeLeft: data.duration || 10,
+          completed: false
+        });
+        setTestResults(null);
       });
 
-      ws.on('stream_started', () => {
-        setIsStreaming(true);
+      ws.on('test_completed', (data) => {
+        setTestStatus({
+          running: false,
+          timeLeft: 0,
+          completed: true
+        });
+        setTestResults(data);
+        console.log('Test tamamlandı:', data);
       });
 
-      ws.on('stream_stopped', () => {
-        setIsStreaming(false);
+      ws.on('test_stopped', () => {
+        setTestStatus({
+          running: false,
+          timeLeft: 0,
+          completed: false
+        });
+      });
+
+      ws.on('test_error', (error) => {
+        console.error('Test hatası:', error);
+        setTestStatus({
+          running: false,
+          timeLeft: 0,
+          completed: false
+        });
+        setConnectionStatus({
+          connected: true,
+          message: `Test hatası: ${error}`,
+          timestamp: Date.now()
+        });
       });
 
       ws.on('disconnect', () => {
@@ -69,7 +94,11 @@ function App() {
           timestamp: Date.now()
         });
         setSocket(null);
-        setIsStreaming(false);
+        setTestStatus({
+          running: false,
+          timeLeft: 0,
+          completed: false
+        });
         
         // 3 saniye sonra otomatik yeniden bağlan
         reconnectTimeoutRef.current = setTimeout(() => {
@@ -102,51 +131,26 @@ function App() {
     }
   };
 
-  const updateFrameRate = () => {
-    const now = Date.now();
-    const timeDiff = now - lastFrameTime;
-    
-    if (timeDiff > 1000) { // Her saniye güncelle
-      setFrameRate(Math.round(frameCount * 1000 / timeDiff));
-      setFrameCount(0);
-      setLastFrameTime(now);
-    } else {
-      setFrameCount(prev => prev + 1);
-    }
-  };
-
-  const updateAnalysisData = (data) => {
-    console.log('Gelen analiz verisi:', data); // Debug için
-    setAnalysis({
-      omuz_genisligi: parseFloat(data.omuz_genisligi) || 0,
-      bel_genisligi: parseFloat(data.bel_genisligi) || 0,
-      omuz_bel_orani: parseFloat(data.omuz_bel_orani) || 0,
-      vucut_tipi: data.vucut_tipi || 'Analiz Bekleniyor',
-      mesafe: parseFloat(data.mesafe) || 0,
-      confidence: data.confidence || 0
-    });
-  };
-
   const sendWebSocketMessage = (type, data) => {
     if (socket && socket.connected) {
       socket.emit(type, data);
     }
   };
 
-  const startVideo = () => {
-    if (connectionStatus.connected && !isStreaming) {
-      sendWebSocketMessage('start_video');
+  const startTest = () => {
+    if (connectionStatus.connected && !testStatus.running) {
+      sendWebSocketMessage('start_test');
     }
   };
 
-  const stopVideo = () => {
-    if (connectionStatus.connected && isStreaming) {
-      sendWebSocketMessage('stop_video');
+  const stopTest = () => {
+    if (connectionStatus.connected && testStatus.running) {
+      sendWebSocketMessage('stop_test');
     }
   };
 
   const getBodyTypeColor = (type) => {
-    switch (type.toLowerCase()) {
+    switch (type?.toLowerCase()) {
       case 'ektomorf': return '#3B82F6';
       case 'mezomorf': return '#10B981';
       case 'endomorf': return '#F59E0B';
@@ -155,7 +159,7 @@ function App() {
   };
 
   const getBodyTypeDescription = (type) => {
-    switch (type.toLowerCase()) {
+    switch (type?.toLowerCase()) {
       case 'ektomorf': return 'İnce yapılı, hızlı metabolizma';
       case 'mezomorf': return 'Atletik yapı, orta metabolizma';
       case 'endomorf': return 'Geniş yapılı, yavaş metabolizma';
@@ -185,7 +189,7 @@ function App() {
             <div className="flex items-center space-x-3">
               <Activity className="h-8 w-8 text-blue-600" />
               <h1 className="text-2xl font-bold text-slate-900">
-                Canlı Vücut Analizi
+                Vücut Analizi ve Diyet Önerisi
               </h1>
             </div>
             <div className="flex items-center space-x-4">
@@ -195,10 +199,10 @@ function App() {
                   {connectionStatus.message}
                 </span>
               </div>
-              {isStreaming && (
+              {testStatus.running && (
                 <div className="flex items-center space-x-2 text-sm text-slate-600">
-                  <Zap className="h-4 w-4" />
-                  <span>{frameRate} FPS</span>
+                  <Clock className="h-4 w-4" />
+                  <span>{testStatus.timeLeft}s</span>
                 </div>
               )}
             </div>
@@ -210,70 +214,87 @@ function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Video Akışı */}
+          {/* Test Alanı */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-slate-900 flex items-center">
-                    <Camera className="h-5 w-5 mr-2 text-blue-600" />
-                    Kamera Görüntüsü
+                    <Target className="h-5 w-5 mr-2 text-blue-600" />
+                    Vücut Analizi Testi
                   </h2>
                   <div className="flex space-x-3">
                     <button
-                      onClick={startVideo}
-                      disabled={!connectionStatus.connected || isStreaming}
+                      onClick={startTest}
+                      disabled={!connectionStatus.connected || testStatus.running}
                       className={`
-                        px-4 py-2 rounded-lg font-medium transition-all duration-200
-                        ${!connectionStatus.connected || isStreaming
+                        px-6 py-3 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2
+                        ${!connectionStatus.connected || testStatus.running
                           ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                           : 'bg-green-600 hover:bg-green-700 text-white shadow-sm hover:shadow-md'
                         }
                       `}
                     >
-                      Başlat
+                      <Play className="h-4 w-4" />
+                      <span>Teste Başla</span>
                     </button>
                     <button
-                      onClick={stopVideo}
-                      disabled={!connectionStatus.connected || !isStreaming}
+                      onClick={stopTest}
+                      disabled={!connectionStatus.connected || !testStatus.running}
                       className={`
-                        px-4 py-2 rounded-lg font-medium transition-all duration-200
-                        ${!connectionStatus.connected || !isStreaming
+                        px-6 py-3 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2
+                        ${!connectionStatus.connected || !testStatus.running
                           ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                           : 'bg-red-600 hover:bg-red-700 text-white shadow-sm hover:shadow-md'
                         }
                       `}
                     >
-                      Durdur
+                      <Square className="h-4 w-4" />
+                      <span>Durdur</span>
                     </button>
                   </div>
                 </div>
                 
+                {/* Test Açıklaması */}
+                {!testStatus.running && !testStatus.completed && (
+                  <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h3 className="font-semibold text-blue-900 mb-2">Test Nasıl Çalışır?</h3>
+                    <ul className="text-blue-800 text-sm space-y-1">
+                      <li>• Kameraya 1-2 metre mesafede durun</li>
+                      <li>• Kollarınızı yana açın</li>
+                      <li>• 10 saniye boyunca sabit durun</li>
+                      <li>• Sistem vücut tipinizi analiz edecek</li>
+                      <li>• Size özel diyet önerileri sunulacak</li>
+                    </ul>
+                  </div>
+                )}
+                
                 <div className="relative">
-                  {isStreaming ? (
+                  {testStatus.running ? (
                     <div className="relative bg-black rounded-lg overflow-hidden max-w-full">
                       <img
                         ref={imageRef}
-                        alt="Kamera Görüntüsü"
+                        alt="Test Görüntüsü"
                         className="w-full h-auto max-h-[500px] object-contain"
-                      />
-                      <canvas
-                        ref={canvasRef}
-                        className="absolute inset-0 w-full h-full pointer-events-none"
                       />
                       <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm">
                         Sol: RGB + Pose Detection | Sağ: Derinlik Görüntüsü
                       </div>
+                      {testStatus.timeLeft > 0 && (
+                        <div className="absolute top-2 right-2 bg-red-600 text-white px-3 py-1 rounded-full font-bold">
+                          {testStatus.timeLeft}s
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="bg-slate-100 rounded-lg h-[400px] flex items-center justify-center">
                       <div className="text-center">
                         <Camera className="h-16 w-16 text-slate-400 mx-auto mb-4" />
                         <p className="text-slate-600 text-lg">
-                          Kamera görüntüsü bekleniyor...
+                          {testStatus.completed ? 'Test tamamlandı!' : 'Test başlatmak için "Teste Başla" butonuna tıklayın'}
                         </p>
                         <p className="text-slate-500 text-sm mt-2">
-                          RGB + Derinlik görüntüsü için "Başlat" butonuna tıklayın
+                          {testStatus.completed ? 'Sonuçlarınızı sağ panelden inceleyebilirsiniz' : '10 saniye sürecek analiz için hazır olun'}
                         </p>
                       </div>
                     </div>
@@ -283,87 +304,164 @@ function App() {
             </div>
           </div>
 
-          {/* Analiz Paneli */}
+          {/* Sonuçlar Paneli */}
           <div className="space-y-6">
             
-            {/* Vücut Ölçüleri */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
-                <Users className="h-5 w-5 mr-2 text-blue-600" />
-                Vücut Ölçüleri
-              </h3>
-              
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                  <span className="text-slate-600">Omuz Genişliği</span>
-                  <span className="font-semibold text-slate-900">
-                    {analysis.omuz_genisligi > 0 ? `${Number(analysis.omuz_genisligi).toFixed(1)} cm` : '—'}
-                  </span>
-                </div>
+            {/* Test Sonuçları */}
+            {testResults && (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
+                  <Users className="h-5 w-5 mr-2 text-blue-600" />
+                  Test Sonuçları
+                </h3>
                 
-                <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                  <span className="text-slate-600">Bel Genişliği</span>
-                  <span className="font-semibold text-slate-900">
-                    {analysis.bel_genisligi > 0 ? `${Number(analysis.bel_genisligi).toFixed(1)} cm` : '—'}
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                  <span className="text-slate-600">Omuz/Bel Oranı</span>
-                  <span className="font-semibold text-slate-900">
-                    {analysis.omuz_bel_orani > 0 ? Number(analysis.omuz_bel_orani).toFixed(2) : '—'}
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                  <span className="text-slate-600">Mesafe</span>
-                  <span className="font-semibold text-slate-900">
-                    {analysis.mesafe > 0 ? `${Number(analysis.mesafe).toFixed(1)} m` : '—'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Vücut Tipi Analizi */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">
-                Vücut Tipi Analizi
-              </h3>
-              
-              <div className="text-center">
-                <div 
-                  className="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center text-white font-bold text-lg"
-                  style={{ backgroundColor: getBodyTypeColor(analysis.vucut_tipi) }}
-                >
-                  {analysis.vucut_tipi.charAt(0).toUpperCase()}
-                </div>
-                
-                <h4 className="text-xl font-semibold text-slate-900 mb-2">
-                  {analysis.vucut_tipi}
-                </h4>
-                
-                <p className="text-slate-600 text-sm mb-4">
-                  {getBodyTypeDescription(analysis.vucut_tipi)}
-                </p>
-                
-                {analysis.confidence > 0 && (
-                  <div className="mt-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm text-slate-600">Güvenilirlik</span>
-                      <span className="text-sm font-medium text-slate-900">
-                        {(analysis.confidence * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${analysis.confidence * 100}%` }}
-                      />
-                    </div>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                    <span className="text-slate-600">Omuz Genişliği</span>
+                    <span className="font-semibold text-slate-900">
+                      {testResults.omuz_genisligi > 0 ? `${testResults.omuz_genisligi} cm` : '—'}
+                    </span>
                   </div>
-                )}
+                  
+                  <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                    <span className="text-slate-600">Bel Genişliği</span>
+                    <span className="font-semibold text-slate-900">
+                      {testResults.bel_genisligi > 0 ? `${testResults.bel_genisligi} cm` : '—'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                    <span className="text-slate-600">Omuz/Bel Oranı</span>
+                    <span className="font-semibold text-slate-900">
+                      {testResults.omuz_bel_orani > 0 ? testResults.omuz_bel_orani : '—'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                    <span className="text-slate-600">Güvenilirlik</span>
+                    <span className="font-semibold text-slate-900">
+                      {testResults.confidence > 0 ? `${(testResults.confidence * 100).toFixed(1)}%` : '—'}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Vücut Tipi */}
+            {testResults && (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                  Vücut Tipi Analizi
+                </h3>
+                
+                <div className="text-center">
+                  <div 
+                    className="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center text-white font-bold text-lg"
+                    style={{ backgroundColor: getBodyTypeColor(testResults.vucut_tipi) }}
+                  >
+                    {testResults.vucut_tipi?.charAt(0)?.toUpperCase() || '?'}
+                  </div>
+                  
+                  <h4 className="text-xl font-semibold text-slate-900 mb-2">
+                    {testResults.vucut_tipi || 'Analiz Bekleniyor'}
+                  </h4>
+                  
+                  <p className="text-slate-600 text-sm mb-4">
+                    {getBodyTypeDescription(testResults.vucut_tipi)}
+                  </p>
+                  
+                  {testResults.confidence > 0 && (
+                    <div className="mt-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm text-slate-600">Güvenilirlik</span>
+                        <span className="text-sm font-medium text-slate-900">
+                          {(testResults.confidence * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${testResults.confidence * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Diyet Önerileri */}
+            {testResults && testResults.diyet_onerileri && Object.keys(testResults.diyet_onerileri).length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
+                  <Utensils className="h-5 w-5 mr-2 text-green-600" />
+                  Kişisel Diyet Önerileri
+                </h3>
+                
+                <div className="space-y-6">
+                  {/* Özellikler */}
+                  {testResults.diyet_onerileri.ozellikler && (
+                    <div>
+                      <h4 className="font-semibold text-slate-800 mb-2">Vücut Tipi Özellikleri</h4>
+                      <ul className="text-sm text-slate-600 space-y-1">
+                        {testResults.diyet_onerileri.ozellikler.map((ozellik, index) => (
+                          <li key={index} className="flex items-start">
+                            <span className="text-green-500 mr-2">•</span>
+                            {ozellik}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Beslenme İlkeleri */}
+                  {testResults.diyet_onerileri.beslenme_ilkeleri && (
+                    <div>
+                      <h4 className="font-semibold text-slate-800 mb-2">Beslenme İlkeleri</h4>
+                      <ul className="text-sm text-slate-600 space-y-1">
+                        {testResults.diyet_onerileri.beslenme_ilkeleri.map((ilke, index) => (
+                          <li key={index} className="flex items-start">
+                            <span className="text-blue-500 mr-2">•</span>
+                            {ilke}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Önerilen Besinler */}
+                  {testResults.diyet_onerileri.onerilen_besinler && (
+                    <div>
+                      <h4 className="font-semibold text-slate-800 mb-2">Önerilen Besinler</h4>
+                      <div className="grid grid-cols-1 gap-1">
+                        {testResults.diyet_onerileri.onerilen_besinler.map((besin, index) => (
+                          <span key={index} className="text-sm text-slate-600 bg-green-50 px-2 py-1 rounded">
+                            {besin}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Örnek Öğün Planı */}
+                  {testResults.diyet_onerileri.ogun_plani && (
+                    <div>
+                      <h4 className="font-semibold text-slate-800 mb-2">Örnek Günlük Öğün Planı</h4>
+                      <div className="space-y-2">
+                        {Object.entries(testResults.diyet_onerileri.ogun_plani).map(([ogun, plan]) => (
+                          <div key={ogun} className="text-sm">
+                            <span className="font-medium text-slate-700 capitalize">
+                              {ogun.replace('_', ' ')}:
+                            </span>
+                            <span className="text-slate-600 ml-2">{plan}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Sistem Durumu */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -373,11 +471,11 @@ function App() {
               
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Kamera</span>
+                  <span className="text-slate-600">Test Durumu</span>
                   <div className="flex items-center space-x-2">
-                    <div className={`w-2 h-2 rounded-full ${isStreaming ? 'bg-green-500' : 'bg-slate-300'}`} />
+                    <div className={`w-2 h-2 rounded-full ${testStatus.running ? 'bg-green-500' : testStatus.completed ? 'bg-blue-500' : 'bg-slate-300'}`} />
                     <span className="text-sm text-slate-900">
-                      {isStreaming ? 'Aktif' : 'Pasif'}
+                      {testStatus.running ? 'Çalışıyor' : testStatus.completed ? 'Tamamlandı' : 'Bekliyor'}
                     </span>
                   </div>
                 </div>
@@ -392,10 +490,10 @@ function App() {
                   </div>
                 </div>
                 
-                {isStreaming && (
+                {testStatus.running && (
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-600">FPS</span>
-                    <span className="text-sm text-slate-900">{frameRate}</span>
+                    <span className="text-slate-600">Kalan Süre</span>
+                    <span className="text-sm text-slate-900">{testStatus.timeLeft}s</span>
                   </div>
                 )}
               </div>
