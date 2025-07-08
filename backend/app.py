@@ -257,7 +257,7 @@ def stream_frames():
     global streaming, realsense_pipeline
     
     if not rs:
-        emit('error', 'RealSense library not available.')
+        socketio.emit('error', 'RealSense library not available.')
         return
 
     try:
@@ -274,7 +274,14 @@ def stream_frames():
         
         # Get depth sensor and set high accuracy preset
         depth_sensor = profile.get_device().first_depth_sensor()
-        depth_sensor.set_option(rs.option.visual_preset, 3)  # High Accuracy
+        # Try to set visual preset if available
+        try:
+            if hasattr(rs.option, 'visual_preset'):
+                depth_sensor.set_option(rs.option.visual_preset, 3)  # High Accuracy
+            else:
+                print("⚠️ Visual preset option not available, using default settings")
+        except Exception as preset_error:
+            print(f"⚠️ Could not set visual preset: {preset_error}")
         
         # Get depth intrinsics
         depth_intrinsics = profile.get_stream(rs.stream.depth).as_video_stream_profile().get_intrinsics()
@@ -282,7 +289,7 @@ def stream_frames():
         # Setup filters
         setup_realsense_filters(profile)
         
-        print("✅ Intel RealSense camera started successfully with High Accuracy preset.")
+        print("✅ Intel RealSense camera started successfully.")
         
         frame_count = 0
         last_time = time.time()
@@ -349,7 +356,7 @@ def stream_frames():
                 
     except Exception as e:
         print(f"❌ Failed to start Intel RealSense camera: {e}")
-        emit('error', f'Failed to start camera: {str(e)}')
+        socketio.emit('error', f'Failed to start camera: {str(e)}')
         return
     
     finally:
@@ -374,13 +381,13 @@ def handle_start_video(data):
     if not streaming:
         streaming = True
         analysis_thread = socketio.start_background_task(target=stream_frames)
-        emit('stream_started', {'type': 'stream_started'})
+        socketio.emit('stream_started', {'type': 'stream_started'})
 
 @socketio.on('stop_video')
 def handle_stop_video(data):
     global streaming
     streaming = False
-    emit('stream_stopped', {'type': 'stream_stopped'})
+    socketio.emit('stream_stopped', {'type': 'stream_stopped'})
 
 if __name__ == '__main__':
     print("🚀 Starting Enhanced Body Analysis Server...")
