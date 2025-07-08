@@ -189,23 +189,41 @@ def draw_pose(frame: np.ndarray, keypoints: np.ndarray) -> np.ndarray:
     return frame
 
 def create_depth_simulation(frame: np.ndarray, keypoints: np.ndarray) -> np.ndarray:
-    """Create a clean depth-like visualization for webcam"""
+    """Create a smooth depth-like visualization from RGB frame"""
     height, width, _ = frame.shape
     
-    # Create a smooth depth simulation
+    # Convert to grayscale
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
-    # Apply Gaussian blur for smooth depth effect
-    blurred = cv2.GaussianBlur(gray, (15, 15), 0)
+    # Apply edge detection for depth-like effect
+    edges = cv2.Canny(gray, 50, 150)
+    
+    # Invert edges
+    edges_inv = 255 - edges
+    
+    # Apply strong Gaussian blur for smooth depth effect
+    blurred = cv2.GaussianBlur(edges_inv, (21, 21), 0)
+    
+    # Enhance contrast
+    blurred = cv2.equalizeHist(blurred)
     
     # Apply colormap for depth effect
     depth_sim = cv2.applyColorMap(blurred, cv2.COLORMAP_JET)
     
-    # Add keypoints as white dots
+    # Add pose skeleton in white
+    for p1_idx, p2_idx in EDGES:
+        y1, x1, c1 = keypoints[p1_idx]
+        y2, x2, c2 = keypoints[p2_idx]
+        if c1 > 0.3 and c2 > 0.3:
+            pt1 = (int(x1 * width), int(y1 * height))
+            pt2 = (int(x2 * width), int(y2 * height))
+            cv2.line(depth_sim, pt1, pt2, (255, 255, 255), 2)
+    
+    # Add keypoints as bright white dots
     for i, (y, x, c) in enumerate(keypoints):
         if c > 0.3:
             pt = (int(x * width), int(y * height))
-            cv2.circle(depth_sim, pt, 4, (255, 255, 255), -1)
+            cv2.circle(depth_sim, pt, 3, (255, 255, 255), -1)
     
     return depth_sim
 def stream_frames():
@@ -242,9 +260,15 @@ def stream_frames():
             return
         
         # Set camera properties
-        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         camera.set(cv2.CAP_PROP_FPS, 30)
+        camera.set(cv2.CAP_PROP_BRIGHTNESS, 0.5)
+        camera.set(cv2.CAP_PROP_CONTRAST, 0.5)
+        camera.set(cv2.CAP_PROP_SATURATION, 0.6)
+        
+        # Disable auto exposure for consistent image quality
+        camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
         
         print("✅ Webcam başlatıldı!")
         
@@ -262,10 +286,16 @@ def stream_frames():
                 # Mirror the frame
                 frame = cv2.flip(frame, 1)
                 
+                # Resize to standard size for consistent processing
+                frame = cv2.resize(frame, (640, 480))
+                
+                # Apply slight denoising for cleaner image
+                frame = cv2.bilateralFilter(frame, 5, 50, 50)
+                
                 # Run pose detection every frame for smooth tracking
                 keypoints = run_movenet(frame)
                 
-                # Create clean RGB copy
+                # Create clean RGB copy (this will be the LEFT side)
                 rgb_frame = frame.copy()
                 
                 # Draw pose on RGB frame
@@ -274,30 +304,30 @@ def stream_frames():
                 # Estimate measurements
                 analysis_data = estimate_body_measurements(keypoints, rgb_frame.shape)
                 
-                # Create depth simulation
+                # Create depth simulation from ORIGINAL RGB frame (RIGHT side)
                 depth_sim = create_depth_simulation(frame, keypoints)
                 
                 # Add measurement text to RGB frame
                 if analysis_data['omuz_genisligi'] > 0:
                     cv2.putText(rgb_frame, f"Omuz: {analysis_data['omuz_genisligi']:.1f}cm", 
-                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 
                 if analysis_data['bel_genisligi'] > 0:
                     cv2.putText(rgb_frame, f"Bel: {analysis_data['bel_genisligi']:.1f}cm", 
-                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 
                 cv2.putText(rgb_frame, f"Tip: {analysis_data['vucut_tipi']}", 
-                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 
                 if analysis_data['omuz_bel_orani'] > 0:
                     cv2.putText(rgb_frame, f"Oran: {analysis_data['omuz_bel_orani']:.2f}", 
-                               (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                               (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 
                 # Add labels
                 cv2.putText(rgb_frame, "RGB + Pose", (10, rgb_frame.shape[0] - 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 cv2.putText(depth_sim, "Derinlik", (10, depth_sim.shape[0] - 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 
                 # Combine images side by side
                 h1, w1 = rgb_frame.shape[:2]
@@ -309,7 +339,7 @@ def stream_frames():
                 combined_frame = np.hstack((rgb_frame, depth_sim))
                 
                 # Encode frame
-                _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+                _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
                 img_base64 = base64.b64encode(buffer).decode('utf-8')
                 
                 # Send data to client
@@ -331,7 +361,7 @@ def stream_frames():
                     frame_count = 0
                     last_time = current_time
                 
-                socketio.sleep(0.033)  # ~30 FPS
+                socketio.sleep(0.025)  # ~40 FPS
                 
             except Exception as e:
                 print(f"❌ Error in stream loop: {e}")
