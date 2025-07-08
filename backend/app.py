@@ -304,8 +304,8 @@ def stream_frames():
         config = rs.config()
         
         # Daha düşük çözünürlük ve frame rate ile başla
-        config.enable_stream(rs.stream.depth, 424, 240, rs.format.z16, 15)
-        config.enable_stream(rs.stream.color, 424, 240, rs.format.bgr8, 15)
+        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 15)  # 15 FPS
+        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 15)  # 15 FPS
         
         # Start pipeline
         profile = realsense_pipeline.start(config)
@@ -332,12 +332,13 @@ def stream_frames():
         frame_count = 0
         last_time = time.time()
         timeout_count = 0
-        max_timeouts = 10  # 10 timeout sonrası farklı strateji dene
+        max_timeouts = 5  # 5 timeout sonrası yeniden başlat
+        skip_frames = 0  # Frame atlama sayacı
         
         while streaming:
             try:
                 # Wait for frames
-                frames = realsense_pipeline.wait_for_frames(timeout_ms=2000)
+                frames = realsense_pipeline.wait_for_frames(timeout_ms=1000)  # 1 saniye timeout
                 
                 # Get aligned frames
                 align = rs.align(rs.stream.color)
@@ -351,6 +352,11 @@ def stream_frames():
                 
                 # Timeout sayacını sıfırla
                 timeout_count = 0
+                
+                # Her 2. frame'i işle (performans için)
+                skip_frames += 1
+                if skip_frames % 2 != 0:
+                    continue
                 
                 # Apply depth filters
                 filtered_depth_frame = apply_depth_filters(depth_frame)
@@ -369,7 +375,7 @@ def stream_frames():
                 
                 # Encode frame
                 _, buffer = cv2.imencode('.jpg', processed_frame, 
-                                       [cv2.IMWRITE_JPEG_QUALITY, 85])
+                                       [cv2.IMWRITE_JPEG_QUALITY, 70])  # Daha düşük kalite
                 img_base64 = base64.b64encode(buffer).decode('utf-8')
                 
                 # Send data to client
@@ -391,7 +397,7 @@ def stream_frames():
                     frame_count = 0
                     last_time = current_time
                 
-                socketio.sleep(0.033)  # ~30 FPS
+                socketio.sleep(0.066)  # ~15 FPS
                 
             except Exception as e:
                 if "timeout" in str(e).lower() or "didn't arrive" in str(e).lower():
@@ -403,7 +409,7 @@ def stream_frames():
                         # Pipeline'ı yeniden başlat
                         try:
                             realsense_pipeline.stop()
-                            socketio.sleep(1)
+                            socketio.sleep(2)  # Daha uzun bekle
                             profile = realsense_pipeline.start(config)
                             timeout_count = 0
                             print("✅ Kamera yeniden başlatıldı")
@@ -411,7 +417,7 @@ def stream_frames():
                             print(f"❌ Kamera yeniden başlatılamadı: {restart_error}")
                             break
                     
-                    socketio.sleep(0.2)  # Biraz daha uzun bekle
+                    socketio.sleep(0.5)  # Timeout sonrası daha uzun bekle
                     continue
                 else:
                     print(f"❌ Error in stream loop: {e}")
