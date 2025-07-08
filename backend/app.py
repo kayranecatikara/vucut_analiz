@@ -287,13 +287,25 @@ def stream_frames():
         return
 
     try:
+        # Önce mevcut cihazları kontrol et
+        ctx = rs.context()
+        devices = ctx.query_devices()
+        if len(devices) == 0:
+            print("❌ Intel RealSense kamera bulunamadı!")
+            socketio.emit('error', 'Intel RealSense kamera bulunamadı. Kameranın bağlı olduğundan emin olun.')
+            return
+        
+        print(f"✅ {len(devices)} Intel RealSense kamera bulundu")
+        for i, device in enumerate(devices):
+            print(f"   Kamera {i}: {device.get_info(rs.camera_info.name)}")
+
         # Configure RealSense pipeline
         realsense_pipeline = rs.pipeline()
         config = rs.config()
         
-        # Enable streams with optimal settings
-        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        # Daha düşük çözünürlük ve frame rate ile başla
+        config.enable_stream(rs.stream.depth, 424, 240, rs.format.z16, 15)
+        config.enable_stream(rs.stream.color, 424, 240, rs.format.bgr8, 15)
         
         # Start pipeline
         profile = realsense_pipeline.start(config)
@@ -319,11 +331,13 @@ def stream_frames():
         
         frame_count = 0
         last_time = time.time()
+       timeout_count = 0
+       max_timeouts = 10  # 10 timeout sonrası farklı strateji dene
         
         while streaming:
             try:
                 # Wait for frames
-                frames = realsense_pipeline.wait_for_frames(timeout_ms=1000)
+                frames = realsense_pipeline.wait_for_frames(timeout_ms=2000)
                 
                 # Get aligned frames
                 align = rs.align(rs.stream.color)
@@ -334,6 +348,9 @@ def stream_frames():
                 
                 if not color_frame or not depth_frame:
                     continue
+                
+                # Timeout sayacını sıfırla
+                timeout_count = 0
                 
                 # Apply depth filters
                 filtered_depth_frame = apply_depth_filters(depth_frame)
@@ -378,8 +395,23 @@ def stream_frames():
                 
             except Exception as e:
                 if "timeout" in str(e).lower() or "didn't arrive" in str(e).lower():
-                    print(f"⚠️ Frame timeout, retrying... ({e})")
-                    socketio.sleep(0.1)  # Kısa bekle ve tekrar dene
+                    timeout_count += 1
+                    print(f"⚠️ Frame timeout {timeout_count}/{max_timeouts}, retrying...")
+                    
+                    if timeout_count >= max_timeouts:
+                        print("❌ Çok fazla timeout, kamerayı yeniden başlatmaya çalışıyor...")
+                        # Pipeline'ı yeniden başlat
+                        try:
+                            realsense_pipeline.stop()
+                            socketio.sleep(1)
+                            profile = realsense_pipeline.start(config)
+                            timeout_count = 0
+                            print("✅ Kamera yeniden başlatıldı")
+                        except Exception as restart_error:
+                            print(f"❌ Kamera yeniden başlatılamadı: {restart_error}")
+                            break
+                    
+                    socketio.sleep(0.2)  # Biraz daha uzun bekle
                     continue
                 else:
                     print(f"❌ Error in stream loop: {e}")
@@ -387,6 +419,11 @@ def stream_frames():
                 
     except Exception as e:
         print(f"❌ Failed to start Intel RealSense camera: {e}")
+       print("💡 Çözüm önerileri:")
+       print("   1. Kameranın USB 3.0 porta bağlı olduğundan emin olun")
+       print("   2. Başka uygulamaların kamerayı kullanmadığından emin olun")
+       print("   3. 'realsense-viewer' ile kamerayı test edin")
+       print("   4. Kamerayı çıkarıp tekrar takın")
         socketio.emit('error', f'Failed to start camera: {str(e)}')
         return
     
