@@ -150,15 +150,95 @@ def draw_pose(frame: np.ndarray, keypoints: np.ndarray) -> np.ndarray:
             pt = (int(x * width), int(y * height))
             cv2.circle(frame, pt, 4, (255, 0, 0), -1)
     
+    # Draw measurement lines
+    ls_y, ls_x, ls_c = keypoints[KEYPOINT_DICT['left_shoulder']]
+    rs_y, rs_x, rs_c = keypoints[KEYPOINT_DICT['right_shoulder']]
+    lh_y, lh_x, lh_c = keypoints[KEYPOINT_DICT['left_hip']]
+    rh_y, rh_x, rh_c = keypoints[KEYPOINT_DICT['right_hip']]
+    
+    # Shoulder measurement line
+    if ls_c > 0.3 and rs_c > 0.3:
+        pt1 = (int(ls_x * width), int(ls_y * height))
+        pt2 = (int(rs_x * width), int(rs_y * height))
+        cv2.line(frame, pt1, pt2, (255, 0, 0), 3)
+        
+        # Add measurement text on line
+        mid_x = int((pt1[0] + pt2[0]) / 2)
+        mid_y = int((pt1[1] + pt2[1]) / 2) - 10
+        pixel_distance = calculate_pixel_distance(pt1, pt2)
+        shoulder_width = (pixel_distance / width) * 100
+        shoulder_width = max(20, min(80, shoulder_width))
+        cv2.putText(frame, f"{shoulder_width:.1f}cm", (mid_x - 30, mid_y), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+    
+    # Hip measurement line
+    if lh_c > 0.3 and rh_c > 0.3:
+        pt1 = (int(lh_x * width), int(lh_y * height))
+        pt2 = (int(rh_x * width), int(rh_y * height))
+        cv2.line(frame, pt1, pt2, (255, 0, 255), 3)
+        
+        # Add measurement text on line
+        mid_x = int((pt1[0] + pt2[0]) / 2)
+        mid_y = int((pt1[1] + pt2[1]) / 2) + 20
+        pixel_distance = calculate_pixel_distance(pt1, pt2)
+        waist_width = (pixel_distance / width) * 80
+        waist_width = max(15, min(60, waist_width))
+        cv2.putText(frame, f"{waist_width:.1f}cm", (mid_x - 30, mid_y), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
+    
     return frame
 
+def create_depth_simulation(frame: np.ndarray, keypoints: np.ndarray) -> np.ndarray:
+    """Create a depth-like visualization for webcam"""
+    height, width, _ = frame.shape
+    
+    # Create gradient background (simulates depth)
+    depth_sim = np.zeros((height, width, 3), dtype=np.uint8)
+    
+    # Create radial gradient from center
+    center_x, center_y = width // 2, height // 2
+    
+    for y in range(height):
+        for x in range(width):
+            # Distance from center
+            dist = np.sqrt((x - center_x)**2 + (y - center_y)**2)
+            # Normalize distance
+            norm_dist = min(dist / (width * 0.7), 1.0)
+            
+            # Create depth-like color (blue = close, red = far)
+            if norm_dist < 0.3:
+                # Close - blue
+                depth_sim[y, x] = [255, int(255 * (1 - norm_dist * 3)), 0]
+            elif norm_dist < 0.6:
+                # Medium - green/yellow
+                depth_sim[y, x] = [int(255 * (norm_dist - 0.3) * 3), 255, 0]
+            else:
+                # Far - red
+                depth_sim[y, x] = [0, int(255 * (1 - (norm_dist - 0.6) * 2.5)), 255]
+    
+    # Add person silhouette based on keypoints
+    person_mask = np.zeros((height, width), dtype=np.uint8)
+    
+    # Draw filled polygon around detected keypoints
+    valid_points = []
+    for i, (y, x, c) in enumerate(keypoints):
+        if c > 0.3:
+            pt = (int(x * width), int(y * height))
+            valid_points.append(pt)
+            cv2.circle(person_mask, pt, 15, 255, -1)
+    
+    # Apply person mask to make person area more prominent
+    person_area = person_mask > 0
+    depth_sim[person_area] = [255, 200, 100]  # Orange for person
+    
+    return depth_sim
 def stream_frames():
     """Stream frames from webcam with analysis"""
     global streaming, camera
     
     try:
         # Test sonucuna göre çalışan kamera index'i
-        working_cameras = [2, 4, 6]  # Test sonucundan
+        working_cameras = [2, 4, 6, 0, 1]  # Test sonucundan + ekstra
         working_camera_index = None
         
         for camera_index in working_cameras:
@@ -209,26 +289,48 @@ def stream_frames():
                 # Run pose detection
                 keypoints = run_movenet(frame)
                 
-                # Draw pose
-                frame = draw_pose(frame, keypoints)
+                # Draw pose and get measurements
+                frame_with_pose = draw_pose(frame.copy(), keypoints)
                 
                 # Estimate measurements
-                analysis_data = estimate_body_measurements(keypoints, frame.shape)
+                analysis_data = estimate_body_measurements(keypoints, frame_with_pose.shape)
                 
-                # Add measurement text to frame
+                # Create depth simulation (gradient effect)
+                depth_sim = create_depth_simulation(frame, keypoints)
+                
+                # Add measurement text to RGB frame
                 if analysis_data['omuz_genisligi'] > 0:
-                    cv2.putText(frame, f"Omuz: {analysis_data['omuz_genisligi']:.1f}cm", 
-                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                    cv2.putText(frame_with_pose, f"Omuz: {analysis_data['omuz_genisligi']:.1f}cm", 
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 
                 if analysis_data['bel_genisligi'] > 0:
-                    cv2.putText(frame, f"Bel: {analysis_data['bel_genisligi']:.1f}cm", 
-                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                    cv2.putText(frame_with_pose, f"Bel: {analysis_data['bel_genisligi']:.1f}cm", 
+                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 
-                cv2.putText(frame, f"Tip: {analysis_data['vucut_tipi']}", 
-                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(frame_with_pose, f"Tip: {analysis_data['vucut_tipi']}", 
+                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                
+                if analysis_data['omuz_bel_orani'] > 0:
+                    cv2.putText(frame_with_pose, f"Oran: {analysis_data['omuz_bel_orani']:.2f}", 
+                               (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                
+                # Add labels
+                cv2.putText(frame_with_pose, "RGB + Pose", (10, frame_with_pose.shape[0] - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                cv2.putText(depth_sim, "Depth Simulation", (10, depth_sim.shape[0] - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                
+                # Combine images side by side
+                h1, w1 = frame_with_pose.shape[:2]
+                h2, w2 = depth_sim.shape[:2]
+                
+                if h1 != h2:
+                    depth_sim = cv2.resize(depth_sim, (w1, h1))
+                
+                combined_frame = np.hstack((frame_with_pose, depth_sim))
                 
                 # Encode frame
-                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 img_base64 = base64.b64encode(buffer).decode('utf-8')
                 
                 # Send data to client
