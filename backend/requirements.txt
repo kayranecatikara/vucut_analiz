@@ -1,0 +1,9 @@
+eventlet==0.33.3
+flask==2.3.3
+flask-socketio==5.3.6
+flask-cors==4.0.0
+opencv-python==4.8.1.78
+numpy==1.24.3
+tensorflow==2.13.0
+tensorflow-hub==0.14.0
+pyrealsense2==2.54.1
