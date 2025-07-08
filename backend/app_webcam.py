@@ -1,0 +1,285 @@
+#!/usr/bin/env python3
+"""
+Normal webcam ile çalışan vücut analizi
+(RealSense olmadan, sadece pose detection)
+"""
+
+import eventlet
+eventlet.monkey_patch()
+
+from flask import Flask
+from flask_socketio import SocketIO, emit
+from flask_cors import CORS
+import cv2
+import numpy as np
+import base64
+import time
+import logging
+import json
+from typing import Optional, Tuple, Dict, Any
+
+# --- AI Libraries ---
+import tensorflow as tf
+import tensorflow_hub as hub
+
+# --- Flask and SocketIO Setup ---
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+# --- Global Variables ---
+streaming = False
+analysis_thread = None
+camera = None
+
+# --- Model Loading ---
+print("🤖 Loading MoveNet model from TensorFlow Hub...")
+try:
+    model = hub.load("https://tfhub.dev/google/movenet/singlepose/lightning/4")
+    movenet = model.signatures['serving_default']
+    print("✅ MoveNet model loaded successfully.")
+except Exception as e:
+    print(f"❌ Failed to load MoveNet model: {e}")
+    exit()
+
+INPUT_SIZE = 192
+
+# --- Body Parts and Skeleton Definitions ---
+KEYPOINT_DICT = {
+    'nose': 0, 'left_eye': 1, 'right_eye': 2, 'left_ear': 3, 'right_ear': 4,
+    'left_shoulder': 5, 'right_shoulder': 6, 'left_elbow': 7, 'right_elbow': 8,
+    'left_wrist': 9, 'right_wrist': 10, 'left_hip': 11, 'right_hip': 12,
+    'left_knee': 13, 'right_knee': 14, 'left_ankle': 15, 'right_ankle': 16
+}
+
+EDGES = [
+    (5, 6), (5, 7), (7, 9), (6, 8), (8, 10), (5, 11), 
+    (6, 12), (11, 12), (11, 13), (13, 15), (12, 14), (14, 16)
+]
+
+def run_movenet(input_image: np.ndarray) -> np.ndarray:
+    """Run MoveNet model on input image and return keypoints"""
+    img_resized = tf.image.resize_with_pad(np.expand_dims(input_image, axis=0), INPUT_SIZE, INPUT_SIZE)
+    input_tensor = tf.cast(img_resized, dtype=tf.int32)
+    outputs = movenet(input_tensor)
+    return outputs['output_0'].numpy()[0, 0]
+
+def calculate_pixel_distance(p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
+    """Calculate pixel distance between two points"""
+    return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+
+def estimate_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int]) -> Dict[str, Any]:
+    """Estimate body measurements from keypoints (pixel-based approximation)"""
+    height, width = frame_shape[:2]
+    
+    analysis_data = {
+        'omuz_genisligi': 0.0,
+        'bel_genisligi': 0.0,
+        'omuz_bel_orani': 0.0,
+        'vucut_tipi': 'Analiz Bekleniyor',
+        'mesafe': 1.5,  # Sabit mesafe (webcam için)
+        'confidence': 0.0
+    }
+    
+    try:
+        # Extract keypoints
+        ls_y, ls_x, ls_c = keypoints[KEYPOINT_DICT['left_shoulder']]
+        rs_y, rs_x, rs_c = keypoints[KEYPOINT_DICT['right_shoulder']]
+        lh_y, lh_x, lh_c = keypoints[KEYPOINT_DICT['left_hip']]
+        rh_y, rh_x, rh_c = keypoints[KEYPOINT_DICT['right_hip']]
+        
+        # Calculate shoulder width (pixel to cm approximation)
+        if ls_c > 0.3 and rs_c > 0.3:
+            p1 = (int(ls_x * width), int(ls_y * height))
+            p2 = (int(rs_x * width), int(rs_y * height))
+            
+            pixel_distance = calculate_pixel_distance(p1, p2)
+            # Rough approximation: assume person is ~1.5m away, shoulder width ~40-50cm
+            shoulder_width = (pixel_distance / width) * 100  # Basit oran
+            analysis_data['omuz_genisligi'] = max(20, min(80, shoulder_width))  # 20-80cm arası sınırla
+        
+        # Calculate waist width
+        if lh_c > 0.3 and rh_c > 0.3:
+            p1 = (int(lh_x * width), int(lh_y * height))
+            p2 = (int(rh_x * width), int(rh_y * height))
+            
+            pixel_distance = calculate_pixel_distance(p1, p2)
+            waist_width = (pixel_distance / width) * 80  # Biraz daha dar
+            analysis_data['bel_genisligi'] = max(15, min(60, waist_width))
+        
+        # Calculate ratios and body type
+        if analysis_data['omuz_genisligi'] > 0 and analysis_data['bel_genisligi'] > 0:
+            ratio = analysis_data['omuz_genisligi'] / analysis_data['bel_genisligi']
+            analysis_data['omuz_bel_orani'] = ratio
+            
+            # Body type classification
+            if ratio > 1.4:
+                analysis_data['vucut_tipi'] = "Ektomorf"
+            elif ratio > 1.2:
+                analysis_data['vucut_tipi'] = "Mezomorf"
+            else:
+                analysis_data['vucut_tipi'] = "Endomorf"
+            
+            # Simple confidence based on keypoint visibility
+            confidence = (ls_c + rs_c + lh_c + rh_c) / 4
+            analysis_data['confidence'] = min(1.0, confidence)
+        
+    except Exception as e:
+        print(f"Error in measurements: {e}")
+    
+    return analysis_data
+
+def draw_pose(frame: np.ndarray, keypoints: np.ndarray) -> np.ndarray:
+    """Draw pose skeleton on frame"""
+    height, width, _ = frame.shape
+    
+    # Draw skeleton
+    for p1_idx, p2_idx in EDGES:
+        y1, x1, c1 = keypoints[p1_idx]
+        y2, x2, c2 = keypoints[p2_idx]
+        if c1 > 0.3 and c2 > 0.3:
+            pt1 = (int(x1 * width), int(y1 * height))
+            pt2 = (int(x2 * width), int(y2 * height))
+            cv2.line(frame, pt1, pt2, (0, 255, 0), 2)
+    
+    # Draw keypoints
+    for i, (y, x, c) in enumerate(keypoints):
+        if c > 0.3:
+            pt = (int(x * width), int(y * height))
+            cv2.circle(frame, pt, 4, (255, 0, 0), -1)
+    
+    return frame
+
+def stream_frames():
+    """Stream frames from webcam with analysis"""
+    global streaming, camera
+    
+    try:
+        # Open webcam
+        camera = cv2.VideoCapture(0)  # 0 = default camera
+        
+        if not camera.isOpened():
+            print("❌ Webcam açılamadı!")
+            socketio.emit('error', 'Webcam açılamadı. Kameranın bağlı olduğundan emin olun.')
+            return
+        
+        # Set camera properties
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        camera.set(cv2.CAP_PROP_FPS, 30)
+        
+        print("✅ Webcam başlatıldı!")
+        
+        frame_count = 0
+        last_time = time.time()
+        
+        while streaming:
+            try:
+                ret, frame = camera.read()
+                
+                if not ret:
+                    print("❌ Frame okunamadı")
+                    continue
+                
+                # Mirror the frame
+                frame = cv2.flip(frame, 1)
+                
+                # Run pose detection
+                keypoints = run_movenet(frame)
+                
+                # Draw pose
+                frame = draw_pose(frame, keypoints)
+                
+                # Estimate measurements
+                analysis_data = estimate_body_measurements(keypoints, frame.shape)
+                
+                # Add measurement text to frame
+                if analysis_data['omuz_genisligi'] > 0:
+                    cv2.putText(frame, f"Omuz: {analysis_data['omuz_genisligi']:.1f}cm", 
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                
+                if analysis_data['bel_genisligi'] > 0:
+                    cv2.putText(frame, f"Bel: {analysis_data['bel_genisligi']:.1f}cm", 
+                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                
+                cv2.putText(frame, f"Tip: {analysis_data['vucut_tipi']}", 
+                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                
+                # Encode frame
+                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                img_base64 = base64.b64encode(buffer).decode('utf-8')
+                
+                # Send data to client
+                socketio.emit('video_frame', {
+                    'type': 'video_frame',
+                    'frame': img_base64
+                })
+                
+                socketio.emit('analyze_result', {
+                    'type': 'analyze_result',
+                    'data': analysis_data
+                })
+                
+                # Control frame rate
+                frame_count += 1
+                current_time = time.time()
+                if current_time - last_time >= 1.0:
+                    print(f"📊 FPS: {frame_count}")
+                    frame_count = 0
+                    last_time = current_time
+                
+                socketio.sleep(0.033)  # ~30 FPS
+                
+            except Exception as e:
+                print(f"❌ Error in stream loop: {e}")
+                break
+                
+    except Exception as e:
+        print(f"❌ Failed to start webcam: {e}")
+        socketio.emit('error', f'Failed to start camera: {str(e)}')
+        return
+    
+    finally:
+        if camera:
+            camera.release()
+        print("🛑 Webcam stopped.")
+
+# --- SocketIO Events ---
+@socketio.on('connect')
+def handle_connect(auth):
+    print("✅ WebSocket connection established!")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    global streaming
+    streaming = False
+    print("❌ WebSocket connection closed!")
+
+@socketio.on('start_video')
+def handle_start_video(data):
+    global streaming, analysis_thread
+    if not streaming:
+        streaming = True
+        analysis_thread = socketio.start_background_task(target=stream_frames)
+        socketio.emit('stream_started', {'type': 'stream_started'})
+
+@socketio.on('stop_video')
+def handle_stop_video(data):
+    global streaming
+    streaming = False
+    socketio.emit('stream_stopped', {'type': 'stream_stopped'})
+
+if __name__ == '__main__':
+    print("🚀 Starting Webcam Body Analysis Server...")
+    print("📋 Features:")
+    print("   - Normal webcam support")
+    print("   - MoveNet Lightning pose detection")
+    print("   - Pixel-based measurement estimation")
+    print("   - Real-time body type classification")
+    print("   - WebSocket communication")
+    print()
+    print("⚠️  Not: Bu versiyon normal webcam kullanır, 3D ölçümler yaklaşık değerlerdir.")
+    print()
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
