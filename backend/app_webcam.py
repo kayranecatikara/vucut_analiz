@@ -259,16 +259,19 @@ def stream_frames():
             socketio.emit('error', 'Webcam açılamadı. Kameranın bağlı olduğundan emin olun.')
             return
         
-        # Set camera properties
-        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        # Set camera properties for CLEAN image
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         camera.set(cv2.CAP_PROP_FPS, 30)
-        camera.set(cv2.CAP_PROP_BRIGHTNESS, 0.5)
-        camera.set(cv2.CAP_PROP_CONTRAST, 0.5)
-        camera.set(cv2.CAP_PROP_SATURATION, 0.6)
         
-        # Disable auto exposure for consistent image quality
-        camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+        # CRITICAL: Set these for clean image
+        camera.set(cv2.CAP_PROP_BRIGHTNESS, 0.0)  # Default brightness
+        camera.set(cv2.CAP_PROP_CONTRAST, 1.0)    # Full contrast
+        camera.set(cv2.CAP_PROP_SATURATION, 1.0)  # Full saturation
+        camera.set(cv2.CAP_PROP_GAIN, 0.0)        # No gain
+        
+        # Enable auto exposure for natural image
+        camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
         
         print("✅ Webcam başlatıldı!")
         
@@ -286,16 +289,13 @@ def stream_frames():
                 # Mirror the frame
                 frame = cv2.flip(frame, 1)
                 
-                # Resize to standard size for consistent processing
-                frame = cv2.resize(frame, (640, 480))
-                
-                # Apply slight denoising for cleaner image
-                frame = cv2.bilateralFilter(frame, 5, 50, 50)
+                # NO PROCESSING - Keep original clean RGB
+                # frame = cv2.bilateralFilter(frame, 5, 50, 50)  # REMOVED
                 
                 # Run pose detection every frame for smooth tracking
                 keypoints = run_movenet(frame)
                 
-                # Create clean RGB copy (this will be the LEFT side)
+                # Create CLEAN RGB copy (this will be the LEFT side)
                 rgb_frame = frame.copy()
                 
                 # Draw pose on RGB frame
@@ -304,30 +304,30 @@ def stream_frames():
                 # Estimate measurements
                 analysis_data = estimate_body_measurements(keypoints, rgb_frame.shape)
                 
-                # Create depth simulation from ORIGINAL RGB frame (RIGHT side)
+                # Create depth simulation from ORIGINAL clean RGB frame (RIGHT side)
                 depth_sim = create_depth_simulation(frame, keypoints)
                 
                 # Add measurement text to RGB frame
                 if analysis_data['omuz_genisligi'] > 0:
                     cv2.putText(rgb_frame, f"Omuz: {analysis_data['omuz_genisligi']:.1f}cm", 
-                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
                 if analysis_data['bel_genisligi'] > 0:
                     cv2.putText(rgb_frame, f"Bel: {analysis_data['bel_genisligi']:.1f}cm", 
-                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
                 cv2.putText(rgb_frame, f"Tip: {analysis_data['vucut_tipi']}", 
-                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
                 if analysis_data['omuz_bel_orani'] > 0:
                     cv2.putText(rgb_frame, f"Oran: {analysis_data['omuz_bel_orani']:.2f}", 
-                               (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                               (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
                 # Add labels
                 cv2.putText(rgb_frame, "RGB + Pose", (10, rgb_frame.shape[0] - 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 cv2.putText(depth_sim, "Derinlik", (10, depth_sim.shape[0] - 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 
                 # Combine images side by side
                 h1, w1 = rgb_frame.shape[:2]
@@ -339,7 +339,7 @@ def stream_frames():
                 combined_frame = np.hstack((rgb_frame, depth_sim))
                 
                 # Encode frame
-                _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
                 img_base64 = base64.b64encode(buffer).decode('utf-8')
                 
                 # Send data to client
@@ -361,7 +361,7 @@ def stream_frames():
                     frame_count = 0
                     last_time = current_time
                 
-                socketio.sleep(0.025)  # ~40 FPS
+                socketio.sleep(0.033)  # ~30 FPS
                 
             except Exception as e:
                 print(f"❌ Error in stream loop: {e}")
