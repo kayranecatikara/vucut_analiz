@@ -157,24 +157,25 @@ def stream_frames():
     global streaming, camera
     
     try:
-        # Find working camera
+        # Test sonucuna göre çalışan kamera index'i
+        working_cameras = [2, 4, 6]  # Test sonucundan
         working_camera_index = None
-        for i in range(5):  # 0-4 arası test et
-            test_cap = cv2.VideoCapture(i)
+        
+        for camera_index in working_cameras:
+            test_cap = cv2.VideoCapture(camera_index)
             if test_cap.isOpened():
                 ret, frame = test_cap.read()
                 if ret and frame is not None:
-                    working_camera_index = i
+                    working_camera_index = camera_index
                     test_cap.release()
+                    print(f"✅ Kamera {camera_index} kullanılıyor")
                     break
                 test_cap.release()
         
         if working_camera_index is None:
-            print("❌ Hiç webcam bulunamadı!")
-            socketio.emit('error', 'Webcam bulunamadı. Kameranın bağlı olduğundan emin olun.')
+            print("❌ Test edilen kameralar açılamadı!")
+            socketio.emit('error', 'Webcam açılamadı. Kameranın başka bir uygulama tarafından kullanılmadığından emin olun.')
             return
-        
-        print(f"✅ Kamera {working_camera_index} kullanılıyor")
         
         # Open webcam
         camera = cv2.VideoCapture(working_camera_index)
