@@ -151,9 +151,12 @@ def calculate_3d_distance(p1: Tuple[int, int], p2: Tuple[int, int],
                          depth_frame, depth_intrinsics) -> Optional[float]:
     """Calculate 3D distance between two points using depth data"""
     try:
-        # Get depth values at both points
-        depth1 = depth_frame.get_distance(p1[0], p1[1])
-        depth2 = depth_frame.get_distance(p2[0], p2[1])
+        # Convert depth frame to numpy array for distance calculation
+        depth_image = np.asanyarray(depth_frame.get_data())
+        
+        # Get depth values at both points (in meters)
+        depth1 = depth_image[p1[1], p1[0]] * depth_frame.get_units()
+        depth2 = depth_image[p2[1], p2[0]] * depth_frame.get_units()
         
         # Validate depth values
         if depth1 <= 0 or depth2 <= 0 or depth1 > 5.0 or depth2 > 5.0:
@@ -269,7 +272,14 @@ def draw_and_analyze(frame: np.ndarray, keypoints: np.ndarray,
         if ls_c > 0.3 and rs_c > 0.3:
             center_x = int((ls_x + rs_x) * width / 2)
             center_y = int((ls_y + rs_y) * height / 2)
-            distance = depth_frame.get_distance(center_x, center_y)
+            
+            # Get distance using depth array
+            try:
+                depth_image = np.asanyarray(depth_frame.get_data())
+                distance = depth_image[center_y, center_x] * depth_frame.get_units()
+            except:
+                distance = 0
+                
             if distance > 0:
                 analysis_data['mesafe'] = distance
                 
