@@ -251,26 +251,29 @@ function App() {
                 
                 <div className="relative">
                   {isStreaming ? (
-                    <div className="relative bg-black rounded-lg overflow-hidden">
+                    <div className="relative bg-black rounded-lg overflow-hidden max-w-full">
                       <img
                         ref={imageRef}
                         alt="Kamera Görüntüsü"
-                        className="w-full h-auto max-h-96 object-contain"
+                        className="w-full h-auto max-h-[500px] object-contain"
                       />
                       <canvas
                         ref={canvasRef}
                         className="absolute inset-0 w-full h-full pointer-events-none"
                       />
+                      <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm">
+                        Sol: RGB + Pose Detection | Sağ: Derinlik Görüntüsü
+                      </div>
                     </div>
                   ) : (
-                    <div className="bg-slate-100 rounded-lg h-96 flex items-center justify-center">
+                    <div className="bg-slate-100 rounded-lg h-[400px] flex items-center justify-center">
                       <div className="text-center">
                         <Camera className="h-16 w-16 text-slate-400 mx-auto mb-4" />
                         <p className="text-slate-600 text-lg">
                           Kamera görüntüsü bekleniyor...
                         </p>
                         <p className="text-slate-500 text-sm mt-2">
-                          Analizi başlatmak için "Başlat" butonuna tıklayın
+                          RGB + Derinlik görüntüsü için "Başlat" butonuna tıklayın
                         </p>
                       </div>
                     </div>

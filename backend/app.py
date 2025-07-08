@@ -303,21 +303,25 @@ def stream_frames():
         realsense_pipeline = rs.pipeline()
         config = rs.config()
         
-        # Daha düşük çözünürlük ve frame rate ile başla
-        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 15)  # 15 FPS
-        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 15)  # 15 FPS
+        # Optimize edilmiş ayarlar
+        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
         
         # Start pipeline
         profile = realsense_pipeline.start(config)
         
         # Get depth sensor and set high accuracy preset
         depth_sensor = profile.get_device().first_depth_sensor()
-        # Try to set visual preset if available
+        
+        # Depth sensor ayarları
         try:
-            if hasattr(rs.option, 'visual_preset'):
-                depth_sensor.set_option(rs.option.visual_preset, 3)  # High Accuracy
-            else:
-                print("⚠️ Visual preset option not available, using default settings")
+            # High Accuracy preset
+            depth_sensor.set_option(rs.option.visual_preset, 3)
+            # Laser power ayarı (daha iyi derinlik için)
+            depth_sensor.set_option(rs.option.laser_power, 240)  # Max: 360
+            # Confidence threshold
+            depth_sensor.set_option(rs.option.confidence_threshold, 1)
+            print("✅ Depth sensor optimize edildi")
         except Exception as preset_error:
             print(f"⚠️ Could not set visual preset: {preset_error}")
         
@@ -327,18 +331,19 @@ def stream_frames():
         # Setup filters
         setup_realsense_filters(profile)
         
+        # Colorizer for depth visualization
+        colorizer = rs.colorizer()
+        colorizer.set_option(rs.option.color_scheme, 0)  # Jet colormap
+        
         print("✅ Intel RealSense camera started successfully.")
         
         frame_count = 0
         last_time = time.time()
-        timeout_count = 0
-        max_timeouts = 5  # 5 timeout sonrası yeniden başlat
-        skip_frames = 0  # Frame atlama sayacı
         
         while streaming:
             try:
-                # Wait for frames
-                frames = realsense_pipeline.wait_for_frames(timeout_ms=1000)  # 1 saniye timeout
+                # Wait for frames with timeout
+                frames = realsense_pipeline.wait_for_frames(timeout_ms=5000)
                 
                 # Get aligned frames
                 align = rs.align(rs.stream.color)
@@ -350,20 +355,16 @@ def stream_frames():
                 if not color_frame or not depth_frame:
                     continue
                 
-                # Timeout sayacını sıfırla
-                timeout_count = 0
-                
-                # Her 2. frame'i işle (performans için)
-                skip_frames += 1
-                if skip_frames % 2 != 0:
-                    continue
-                
                 # Apply depth filters
                 filtered_depth_frame = apply_depth_filters(depth_frame)
                 
-                # Convert to numpy array
+                # Convert color frame to numpy array
                 color_image = np.asanyarray(color_frame.get_data())
                 color_image = cv2.flip(color_image, 1)  # Mirror image
+                
+                # Convert depth frame to colorized image
+                depth_colormap = np.asanyarray(colorizer.colorize(filtered_depth_frame).get_data())
+                depth_colormap = cv2.flip(depth_colormap, 1)  # Mirror image
                 
                 # Run pose detection
                 keypoints = run_movenet(color_image)
@@ -373,9 +374,26 @@ def stream_frames():
                     color_image, keypoints, filtered_depth_frame, depth_intrinsics
                 )
                 
-                # Encode frame
-                _, buffer = cv2.imencode('.jpg', processed_frame, 
-                                       [cv2.IMWRITE_JPEG_QUALITY, 70])  # Daha düşük kalite
+                # Create side-by-side view
+                # Resize images to same height if needed
+                h1, w1 = processed_frame.shape[:2]
+                h2, w2 = depth_colormap.shape[:2]
+                
+                if h1 != h2:
+                    depth_colormap = cv2.resize(depth_colormap, (w1, h1))
+                
+                # Add labels
+                cv2.putText(processed_frame, "RGB + Pose", (10, 25), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(depth_colormap, "Depth", (10, 25), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                
+                # Combine images side by side
+                combined_frame = np.hstack((processed_frame, depth_colormap))
+                
+                # Encode combined frame
+                _, buffer = cv2.imencode('.jpg', combined_frame, 
+                                       [cv2.IMWRITE_JPEG_QUALITY, 85])
                 img_base64 = base64.b64encode(buffer).decode('utf-8')
                 
                 # Send data to client
@@ -397,31 +415,9 @@ def stream_frames():
                     frame_count = 0
                     last_time = current_time
                 
-                socketio.sleep(0.066)  # ~15 FPS
+                socketio.sleep(0.033)  # ~30 FPS
                 
             except Exception as e:
-                if "timeout" in str(e).lower() or "didn't arrive" in str(e).lower():
-                    timeout_count += 1
-                    print(f"⚠️ Frame timeout {timeout_count}/{max_timeouts}, retrying...")
-                    
-                    if timeout_count >= max_timeouts:
-                        print("❌ Çok fazla timeout, kamerayı yeniden başlatmaya çalışıyor...")
-                        # Pipeline'ı yeniden başlat
-                        try:
-                            realsense_pipeline.stop()
-                            socketio.sleep(2)  # Daha uzun bekle
-                            profile = realsense_pipeline.start(config)
-                            timeout_count = 0
-                            print("✅ Kamera yeniden başlatıldı")
-                        except Exception as restart_error:
-                            print(f"❌ Kamera yeniden başlatılamadı: {restart_error}")
-                            break
-                    
-                    socketio.sleep(0.5)  # Timeout sonrası daha uzun bekle
-                    continue
-                else:
-                    print(f"❌ Error in stream loop: {e}")
-                    break
                 
     except Exception as e:
         print(f"❌ Failed to start Intel RealSense camera: {e}")
