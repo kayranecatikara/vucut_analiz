@@ -331,8 +331,8 @@ def stream_frames():
         
         frame_count = 0
         last_time = time.time()
-       timeout_count = 0
-       max_timeouts = 10  # 10 timeout sonrası farklı strateji dene
+        timeout_count = 0
+        max_timeouts = 10  # 10 timeout sonrası farklı strateji dene
         
         while streaming:
             try:
@@ -419,11 +419,11 @@ def stream_frames():
                 
     except Exception as e:
         print(f"❌ Failed to start Intel RealSense camera: {e}")
-       print("💡 Çözüm önerileri:")
-       print("   1. Kameranın USB 3.0 porta bağlı olduğundan emin olun")
-       print("   2. Başka uygulamaların kamerayı kullanmadığından emin olun")
-       print("   3. 'realsense-viewer' ile kamerayı test edin")
-       print("   4. Kamerayı çıkarıp tekrar takın")
+        print("💡 Çözüm önerileri:")
+        print("   1. Kameranın USB 3.0 porta bağlı olduğundan emin olun")
+        print("   2. Başka uygulamaların kamerayı kullanmadığından emin olun")
+        print("   3. 'realsense-viewer' ile kamerayı test edin")
+        print("   4. Kamerayı çıkarıp tekrar takın")
         socketio.emit('error', f'Failed to start camera: {str(e)}')
         return
     
