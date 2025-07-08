@@ -323,7 +323,7 @@ def stream_frames():
         while streaming:
             try:
                 # Wait for frames
-                frames = realsense_pipeline.wait_for_frames()
+                frames = realsense_pipeline.wait_for_frames(timeout_ms=1000)
                 
                 # Get aligned frames
                 align = rs.align(rs.stream.color)
@@ -377,8 +377,13 @@ def stream_frames():
                 socketio.sleep(0.033)  # ~30 FPS
                 
             except Exception as e:
-                print(f"❌ Error in stream loop: {e}")
-                break
+                if "timeout" in str(e).lower() or "didn't arrive" in str(e).lower():
+                    print(f"⚠️ Frame timeout, retrying... ({e})")
+                    socketio.sleep(0.1)  # Kısa bekle ve tekrar dene
+                    continue
+                else:
+                    print(f"❌ Error in stream loop: {e}")
+                    break
                 
     except Exception as e:
         print(f"❌ Failed to start Intel RealSense camera: {e}")
