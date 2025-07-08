@@ -189,20 +189,23 @@ def draw_pose(frame: np.ndarray, keypoints: np.ndarray) -> np.ndarray:
     return frame
 
 def create_depth_simulation(frame: np.ndarray, keypoints: np.ndarray) -> np.ndarray:
-    """Create a simple depth-like visualization for webcam"""
+    """Create a clean depth-like visualization for webcam"""
     height, width, _ = frame.shape
     
-    # Convert to grayscale first for speed
+    # Create a smooth depth simulation
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
-    # Apply colormap for depth effect (much faster)
-    depth_sim = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
+    # Apply Gaussian blur for smooth depth effect
+    blurred = cv2.GaussianBlur(gray, (15, 15), 0)
     
-    # Highlight person with keypoints
+    # Apply colormap for depth effect
+    depth_sim = cv2.applyColorMap(blurred, cv2.COLORMAP_JET)
+    
+    # Add keypoints as white dots
     for i, (y, x, c) in enumerate(keypoints):
         if c > 0.3:
             pt = (int(x * width), int(y * height))
-            cv2.circle(depth_sim, pt, 8, (255, 255, 255), -1)
+            cv2.circle(depth_sim, pt, 4, (255, 255, 255), -1)
     
     return depth_sim
 def stream_frames():
@@ -259,9 +262,8 @@ def stream_frames():
                 # Mirror the frame
                 frame = cv2.flip(frame, 1)
                 
-                # Run pose detection (every 2nd frame for performance)
-                if frame_count % 2 == 0:
-                    keypoints = run_movenet(frame)
+                # Run pose detection every frame for smooth tracking
+                keypoints = run_movenet(frame)
                 
                 # Create clean RGB copy
                 rgb_frame = frame.copy()
@@ -272,31 +274,30 @@ def stream_frames():
                 # Estimate measurements
                 analysis_data = estimate_body_measurements(keypoints, rgb_frame.shape)
                 
-                # Create depth simulation (only every 3rd frame for performance)
-                if frame_count % 3 == 0:
-                    depth_sim = create_depth_simulation(frame, keypoints)
+                # Create depth simulation
+                depth_sim = create_depth_simulation(frame, keypoints)
                 
                 # Add measurement text to RGB frame
                 if analysis_data['omuz_genisligi'] > 0:
                     cv2.putText(rgb_frame, f"Omuz: {analysis_data['omuz_genisligi']:.1f}cm", 
-                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
                 if analysis_data['bel_genisligi'] > 0:
                     cv2.putText(rgb_frame, f"Bel: {analysis_data['bel_genisligi']:.1f}cm", 
-                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
                 cv2.putText(rgb_frame, f"Tip: {analysis_data['vucut_tipi']}", 
-                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
                 if analysis_data['omuz_bel_orani'] > 0:
                     cv2.putText(rgb_frame, f"Oran: {analysis_data['omuz_bel_orani']:.2f}", 
-                               (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                               (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
                 # Add labels
                 cv2.putText(rgb_frame, "RGB + Pose", (10, rgb_frame.shape[0] - 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                cv2.putText(depth_sim, "Depth Simulation", (10, depth_sim.shape[0] - 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(depth_sim, "Derinlik", (10, depth_sim.shape[0] - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 
                 # Combine images side by side
                 h1, w1 = rgb_frame.shape[:2]
@@ -308,7 +309,7 @@ def stream_frames():
                 combined_frame = np.hstack((rgb_frame, depth_sim))
                 
                 # Encode frame
-                _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
                 img_base64 = base64.b64encode(buffer).decode('utf-8')
                 
                 # Send data to client
@@ -330,7 +331,7 @@ def stream_frames():
                     frame_count = 0
                     last_time = current_time
                 
-                socketio.sleep(0.05)  # ~20 FPS (daha stabil)
+                socketio.sleep(0.033)  # ~30 FPS
                 
             except Exception as e:
                 print(f"❌ Error in stream loop: {e}")
