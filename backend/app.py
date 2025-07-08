@@ -418,6 +418,8 @@ def stream_frames():
                 socketio.sleep(0.033)  # ~30 FPS
                 
             except Exception as e:
+                print(f"❌ Error in stream loop: {e}")
+                break
                 
     except Exception as e:
         print(f"❌ Failed to start Intel RealSense camera: {e}")
