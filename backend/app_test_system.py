@@ -193,8 +193,9 @@ def capture_realsense_frame():
         frames = pipeline.wait_for_frames(timeout_ms=1000)
         color_frame = frames.get_color_frame()
         
-        if color_frame:
+            # RGB görüntüyü numpy array'e çevir ve aynala
             color_image = np.asanyarray(color_frame.get_data())
+            color_image = cv2.flip(color_image, 1)  # Aynala
             color_image = cv2.flip(color_image, 1)  # Mirror
             return color_image
         
@@ -270,11 +271,12 @@ def process_food_photo():
         # Frame yakala
         captured_frame = capture_single_frame()
         
-        if captured_frame is None:
+            # Frame'i aynala
+            color_image = cv2.flip(frame, 1)
             safe_emit('food_analysis_error', {'message': 'Fotoğraf çekilemedi'})
             return
         
-        # Frame'i base64'e çevir
+        # RGB fotoğrafı base64'e çevir (JPEG formatında)
         _, buffer = cv2.imencode('.jpg', captured_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
         img_base64 = base64.b64encode(buffer).decode('utf-8')
         
