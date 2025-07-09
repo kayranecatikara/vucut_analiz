@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-Test Tabanlı Vücut Analizi Sistemi - Düzeltilmiş Versiyon
-- Teste başla butonuna basıldıktan sonra 10 saniye analiz
-- Analiz sonunda kamera kapanır
-- Vücut tipine göre diyet önerileri
-- Sol ekranda ölçüm verileri gözükür
-- Sağ tarafta detaylı sonuçlar
+Test Tabanlı Vücut Analizi Sistemi - Timeout Sorunları Düzeltildi
+- WebSocket bağlantı sorunları çözüldü
+- RealSense kamera timeout yönetimi iyileştirildi
+- Otomatik yeniden bağlanma sistemi
+- Heartbeat ve connection monitoring
 """
 
 import eventlet
@@ -42,14 +41,17 @@ log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
+
+# WebSocket ayarları - timeout sorunları için optimize edildi
 socketio = SocketIO(app, 
                    cors_allowed_origins="*", 
                    async_mode='eventlet',
-                   ping_timeout=60,
-                   ping_interval=25,
+                   ping_timeout=120,  # 2 dakika timeout
+                   ping_interval=30,  # 30 saniyede bir ping
                    logger=False, 
                    engineio_logger=False,
-                   transports=['websocket', 'polling'])
+                   transports=['websocket', 'polling'],
+                   allow_upgrades=True)
 
 # --- Global Variables ---
 test_running = False
@@ -57,6 +59,8 @@ test_thread = None
 camera = None
 realsense_pipeline = None
 camera_mode = "webcam"
+connected_clients = set()
+heartbeat_thread = None
 
 # Test parametreleri
 TEST_DURATION = 10  # 10 saniye test süresi
@@ -101,7 +105,7 @@ def load_movenet_model():
             
             # Timeout ile model yükleme
             import socket
-            socket.setdefaulttimeout(30)  # 30 saniye timeout
+            socket.setdefaulttimeout(60)  # 60 saniye timeout
             
             model = hub.load("https://tfhub.dev/google/movenet/singlepose/lightning/4")
             movenet = model.signatures['serving_default']
@@ -526,8 +530,6 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
         lh_y, lh_x, lh_c = keypoints[KEYPOINT_DICT['left_hip']]
         rh_y, rh_x, rh_c = keypoints[KEYPOINT_DICT['right_hip']]
         
-        print(f"🔍 Keypoint confidence - LS: {ls_c:.2f}, RS: {rs_c:.2f}, LH: {lh_c:.2f}, RH: {rh_c:.2f}")
-        
         # Calculate shoulder width
         shoulder_width = 0.0
         if ls_c > 0.3 and rs_c > 0.3:
@@ -537,7 +539,6 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             if depth_frame is not None and depth_intrinsics is not None:
                 # RealSense 3D measurement
                 shoulder_width = calculate_3d_distance_safe(p1, p2, depth_frame, depth_intrinsics)
-                print(f"📏 3D Omuz genişliği: {shoulder_width}")
                 
                 # 3D başarısız olursa 2D'ye geç
                 if shoulder_width is None:
@@ -549,13 +550,11 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
                     else:
                         shoulder_width = (pixel_distance / width) * 90
                     shoulder_width = max(25, min(75, shoulder_width))
-                    print(f"📏 2D Fallback Omuz genişliği: {shoulder_width}")
             else:
                 # Webcam pixel-based measurement
                 pixel_distance = calculate_pixel_distance(p1, p2)
                 shoulder_width = (pixel_distance / width) * 90
                 shoulder_width = max(25, min(75, shoulder_width))
-                print(f"📏 2D Omuz genişliği: {shoulder_width}")
             
             if shoulder_width:
                 analysis_data['omuz_genisligi'] = shoulder_width
@@ -569,7 +568,6 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             if depth_frame is not None and depth_intrinsics is not None:
                 # RealSense 3D measurement
                 waist_width = calculate_3d_distance_safe(p1, p2, depth_frame, depth_intrinsics)
-                print(f"📏 3D Bel genişliği: {waist_width}")
                 
                 # 3D başarısız olursa 2D'ye geç
                 if waist_width is None:
@@ -580,13 +578,11 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
                     else:
                         waist_width = (pixel_distance / width) * 70
                     waist_width = max(20, min(55, waist_width))
-                    print(f"📏 2D Fallback Bel genişliği: {waist_width}")
             else:
                 # Webcam pixel-based measurement
                 pixel_distance = calculate_pixel_distance(p1, p2)
                 waist_width = (pixel_distance / width) * 70
                 waist_width = max(20, min(55, waist_width))
-                print(f"📏 2D Bel genişliği: {waist_width}")
             
             if waist_width:
                 analysis_data['bel_genisligi'] = waist_width
@@ -607,8 +603,6 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             # Confidence calculation
             confidence = (ls_c + rs_c + lh_c + rh_c) / 4
             analysis_data['confidence'] = min(1.0, confidence)
-            
-            print(f"🎯 Vücut tipi: {analysis_data['vucut_tipi']} (Oran: {ratio:.2f}, Güven: {confidence:.2f})")
         
         # Calculate distance to person
         if depth_frame is not None:
@@ -621,16 +615,14 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
                     distance = safe_array_access(depth_image, center_y, center_x) * depth_frame.get_units()
                     if distance > 0:
                         analysis_data['mesafe'] = distance
-                        print(f"📐 Mesafe: {distance:.1f}m")
                 except Exception as e:
-                    print(f"Mesafe hesaplama hatası: {e}")
+                    pass
         else:
             # Fixed distance for webcam
             analysis_data['mesafe'] = 1.5
         
         # Update current analysis
         current_analysis = analysis_data
-        print(f"✅ Anlık analiz güncellendi: {analysis_data}")
         
     except Exception as e:
         print(f"❌ Analiz hatası: {e}")
@@ -855,7 +847,7 @@ def run_body_analysis_test():
         
         # Detect camera type
         if not detect_camera_type():
-            socketio.emit('test_error', 'Hiçbir kamera bulunamadı')
+            safe_emit('test_error', 'Hiçbir kamera bulunamadı')
             return
         
         if camera_mode == "realsense":
@@ -865,12 +857,20 @@ def run_body_analysis_test():
             
     except Exception as e:
         print(f"❌ Test error: {e}")
-        socketio.emit('test_error', f'Test error: {str(e)}')
+        safe_emit('test_error', f'Test error: {str(e)}')
     finally:
         test_running = False
 
+def safe_emit(event, data):
+    """Safely emit WebSocket message with error handling"""
+    try:
+        if len(connected_clients) > 0:
+            socketio.emit(event, data)
+    except Exception as e:
+        print(f"❌ Emit hatası ({event}): {e}")
+
 def run_realsense_test():
-    """Run test with RealSense camera"""
+    """Run test with RealSense camera - improved timeout handling"""
     global test_running, realsense_pipeline, analysis_results
     
     try:
@@ -897,14 +897,18 @@ def run_realsense_test():
         depth_intrinsics = profile.get_stream(rs.stream.depth).as_video_stream_profile().get_intrinsics()
         
         print("✅ RealSense test başlatıldı")
-        socketio.emit('test_started', {'duration': TEST_DURATION})
+        safe_emit('test_started', {'duration': TEST_DURATION})
         
         start_time = time.time()
         last_analysis_time = 0
+        frame_timeout_count = 0
+        max_timeout_count = 10  # 10 timeout sonrası çık
         
         while test_running and (time.time() - start_time) < TEST_DURATION:
             try:
-                frames = realsense_pipeline.wait_for_frames(timeout_ms=5000)
+                # Daha kısa timeout ile frame bekle
+                frames = realsense_pipeline.wait_for_frames(timeout_ms=1000)
+                frame_timeout_count = 0  # Reset timeout counter
                 
                 align = rs.align(rs.stream.color)
                 aligned_frames = align.process(frames)
@@ -916,10 +920,13 @@ def run_realsense_test():
                     continue
                 
                 # Depth filtering
-                depth_frame = rs.decimation_filter(2).process(depth_frame)
-                depth_frame = rs.spatial_filter().process(depth_frame)
-                depth_frame = rs.temporal_filter().process(depth_frame)
-                depth_frame = rs.hole_filling_filter().process(depth_frame)
+                try:
+                    depth_frame = rs.decimation_filter(2).process(depth_frame)
+                    depth_frame = rs.spatial_filter().process(depth_frame)
+                    depth_frame = rs.temporal_filter().process(depth_frame)
+                    depth_frame = rs.hole_filling_filter().process(depth_frame)
+                except Exception as filter_error:
+                    print(f"⚠️ Depth filtering error: {filter_error}")
                 
                 color_image = np.asanyarray(color_frame.get_data())
                 color_image = cv2.flip(color_image, 1)
@@ -969,32 +976,36 @@ def run_realsense_test():
                 try:
                     _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                     img_base64 = base64.b64encode(buffer).decode('utf-8')
-                    socketio.emit('test_frame', {'frame': img_base64, 'time_left': time_left})
+                    safe_emit('test_frame', {'frame': img_base64, 'time_left': time_left})
                 except Exception as emit_error:
                     print(f"⚠️ Frame gönderme hatası: {emit_error}")
                 
                 socketio.sleep(0.033)  # ~30 FPS
                 
+            except RuntimeError as timeout_error:
+                frame_timeout_count += 1
+                print(f"⚠️ RealSense frame timeout #{frame_timeout_count}: {timeout_error}")
+                
+                if frame_timeout_count >= max_timeout_count:
+                    print("❌ Çok fazla timeout, test durduruluyor")
+                    break
+                    
+                socketio.sleep(0.1)
+                continue
+                
             except Exception as e:
                 print(f"❌ RealSense loop error: {e}")
-                # Break yerine continue - bağlantı kopmasın
                 socketio.sleep(0.1)
                 continue
         
         # Test completed
         calculate_final_analysis()
-        try:
-            socketio.emit('test_completed', final_analysis)
-        except Exception as e:
-            print(f"⚠️ Test completion emit hatası: {e}")
+        safe_emit('test_completed', final_analysis)
         print(f"✅ Test tamamlandı: {len(analysis_results)} analiz yapıldı")
         
     except Exception as e:
         print(f"❌ RealSense test error: {e}")
-        try:
-            socketio.emit('test_error', f'RealSense error: {str(e)}')
-        except:
-            pass
+        safe_emit('test_error', f'RealSense error: {str(e)}')
     
     finally:
         if realsense_pipeline:
@@ -1005,7 +1016,7 @@ def run_realsense_test():
         print("🛑 RealSense test stopped")
 
 def run_webcam_test():
-    """Run test with webcam"""
+    """Run test with webcam - improved timeout handling"""
     global test_running, camera, analysis_results
     
     try:
@@ -1024,7 +1035,7 @@ def run_webcam_test():
                 test_cap.release()
         
         if working_camera_index is None:
-            socketio.emit('test_error', 'Webcam bulunamadı')
+            safe_emit('test_error', 'Webcam bulunamadı')
             return
         
         camera = cv2.VideoCapture(working_camera_index)
@@ -1033,17 +1044,24 @@ def run_webcam_test():
         camera.set(cv2.CAP_PROP_FPS, 30)
         
         print("✅ Webcam test başlatıldı")
-        socketio.emit('test_started', {'duration': TEST_DURATION})
+        safe_emit('test_started', {'duration': TEST_DURATION})
         
         start_time = time.time()
         last_analysis_time = 0
+        failed_frame_count = 0
+        max_failed_frames = 30  # 30 başarısız frame sonrası çık
         
         while test_running and (time.time() - start_time) < TEST_DURATION:
             try:
                 ret, frame = camera.read()
                 if not ret:
+                    failed_frame_count += 1
+                    if failed_frame_count >= max_failed_frames:
+                        print("❌ Çok fazla başarısız frame, test durduruluyor")
+                        break
                     continue
                 
+                failed_frame_count = 0  # Reset failed frame counter
                 frame = cv2.flip(frame, 1)
                 
                 # Run pose detection
@@ -1088,7 +1106,7 @@ def run_webcam_test():
                 try:
                     _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                     img_base64 = base64.b64encode(buffer).decode('utf-8')
-                    socketio.emit('test_frame', {'frame': img_base64, 'time_left': time_left})
+                    safe_emit('test_frame', {'frame': img_base64, 'time_left': time_left})
                 except Exception as emit_error:
                     print(f"⚠️ Frame gönderme hatası: {emit_error}")
                 
@@ -1101,34 +1119,57 @@ def run_webcam_test():
         
         # Test completed
         calculate_final_analysis()
-        try:
-            socketio.emit('test_completed', final_analysis)
-        except Exception as e:
-            print(f"⚠️ Test completion emit hatası: {e}")
+        safe_emit('test_completed', final_analysis)
         print(f"✅ Test tamamlandı: {len(analysis_results)} analiz yapıldı")
         
     except Exception as e:
         print(f"❌ Webcam test error: {e}")
-        try:
-            socketio.emit('test_error', f'Webcam error: {str(e)}')
-        except:
-            pass
+        safe_emit('test_error', f'Webcam error: {str(e)}')
     
     finally:
         if camera:
             camera.release()
         print("🛑 Webcam test stopped")
 
+def heartbeat_monitor():
+    """Background heartbeat to keep connections alive"""
+    while True:
+        try:
+            if len(connected_clients) > 0:
+                safe_emit('heartbeat', {'timestamp': time.time()})
+            socketio.sleep(30)  # Her 30 saniyede bir heartbeat
+        except Exception as e:
+            print(f"❌ Heartbeat hatası: {e}")
+            socketio.sleep(5)
+
 # --- SocketIO Events ---
 @socketio.on('connect')
 def handle_connect(auth):
-    print("✅ WebSocket connection established!")
+    global connected_clients, heartbeat_thread
+    
+    client_id = request.sid if 'request' in globals() else 'unknown'
+    connected_clients.add(client_id)
+    print(f"✅ WebSocket connection established! Client: {client_id}")
+    
+    # Start heartbeat thread if not running
+    if heartbeat_thread is None or not heartbeat_thread.is_alive():
+        heartbeat_thread = socketio.start_background_task(target=heartbeat_monitor)
+    
+    # Send connection confirmation
+    safe_emit('connection_ok', {'status': 'connected', 'timestamp': time.time()})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    global test_running
-    test_running = False
-    print("❌ WebSocket connection closed!")
+    global test_running, connected_clients
+    
+    client_id = request.sid if 'request' in globals() else 'unknown'
+    connected_clients.discard(client_id)
+    
+    # Stop test if no clients connected
+    if len(connected_clients) == 0:
+        test_running = False
+    
+    print(f"❌ WebSocket connection closed! Client: {client_id}, Remaining: {len(connected_clients)}")
 
 @socketio.on('start_test')
 def handle_start_test(data):
@@ -1137,31 +1178,38 @@ def handle_start_test(data):
         if not test_running:
             test_running = True
             test_thread = socketio.start_background_task(target=run_body_analysis_test)
-            socketio.emit('stream_started', {'type': 'stream_started'})
+            safe_emit('stream_started', {'type': 'stream_started'})
             print("🚀 Vücut analizi testi başlatıldı")
         else:
             print("⚠️ Test zaten çalışıyor")
     except Exception as e:
         print(f"❌ Test başlatma hatası: {e}")
-        socketio.emit('test_error', f'Test başlatma hatası: {str(e)}')
+        safe_emit('test_error', f'Test başlatma hatası: {str(e)}')
 
 @socketio.on('stop_test')
 def handle_stop_test(data):
     global test_running
     try:
         test_running = False
-        socketio.emit('test_stopped')
+        safe_emit('test_stopped')
         print("🛑 Test durduruldu")
     except Exception as e:
         print(f"❌ Test durdurma hatası: {e}")
 
-# Heartbeat sistemi ekle
+# Heartbeat sistemi
 @socketio.on('ping')
 def handle_ping(data):
     try:
-        socketio.emit('pong', {'timestamp': time.time()})
+        safe_emit('pong', {'timestamp': time.time()})
     except Exception as e:
         print(f"❌ Ping hatası: {e}")
+
+@socketio.on('check_connection')
+def handle_check_connection(data):
+    try:
+        safe_emit('connection_ok', {'status': 'ok', 'timestamp': time.time()})
+    except Exception as e:
+        print(f"❌ Connection check hatası: {e}")
 
 if __name__ == '__main__':
     print("🚀 Starting Test-Based Body Analysis System...")
@@ -1176,6 +1224,7 @@ if __name__ == '__main__':
     print("   - Gelişmiş omuz algılama")
     print("   - Kararlı WebSocket bağlantısı")
     print("   - Otomatik bağlantı koruma")
+    print("   - Timeout sorunları düzeltildi")
     print()
     
     if REALSENSE_AVAILABLE:
