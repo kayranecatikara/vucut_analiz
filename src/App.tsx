@@ -1,10 +1,23 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Camera, Activity, Users, Zap, AlertCircle, Play, Square, Clock, Target, Utensils, Calendar, ChefHat } from 'lucide-react';
+import { Camera, Activity, Users, Zap, AlertCircle, Play, Square, Clock, Target, Utensils, Calendar, ChefHat, Calculator, Image } from 'lucide-react';
 import { io } from 'socket.io-client';
 
 function App() {
   const [socket, setSocket] = useState(null);
   const [testResults, setTestResults] = useState(null);
+  
+  // Kalori hesaplama state'leri
+  const [calorieCalculationStatus, setCalorieCalculationStatus] = useState({
+    active: false,
+    counting: false,
+    capturing: false,
+    analyzing: false,
+    completed: false,
+    countdown: 0
+  });
+  const [capturedFoodImage, setCapturedFoodImage] = useState(null);
+  const [foodAnalysisResults, setFoodAnalysisResults] = useState(null);
+  
   const [connectionStatus, setConnectionStatus] = useState({
     connected: false,
     message: 'Bağlantı bekleniyor...',
@@ -104,11 +117,75 @@ function App() {
         console.log('Test tamamlandı:', data);
       });
 
+      // Kalori hesaplama olayları
+      ws.on('food_capture_countdown', (data) => {
+        setCalorieCalculationStatus(prev => ({
+          ...prev,
+          counting: true,
+          countdown: data.count
+        }));
+      });
+
+      ws.on('food_capture_started', () => {
+        setCalorieCalculationStatus(prev => ({
+          ...prev,
+          counting: false,
+          capturing: true
+        }));
+      });
+
+      ws.on('food_analysis_started', () => {
+        setCalorieCalculationStatus(prev => ({
+          ...prev,
+          capturing: false,
+          analyzing: true
+        }));
+      });
+
+      ws.on('food_analysis_result', (data) => {
+        setCapturedFoodImage(data.image);
+        setFoodAnalysisResults(data.analysis);
+        setCalorieCalculationStatus({
+          active: false,
+          counting: false,
+          capturing: false,
+          analyzing: false,
+          completed: true,
+          countdown: 0
+        });
+        console.log('Yemek analizi tamamlandı:', data);
+      });
+
+      ws.on('food_analysis_error', (data) => {
+        setCalorieCalculationStatus({
+          active: false,
+          counting: false,
+          capturing: false,
+          analyzing: false,
+          completed: false,
+          countdown: 0
+        });
+        setConnectionStatus({
+          connected: true,
+          message: `Kalori hesaplama hatası: ${data.message}`,
+          timestamp: Date.now()
+        });
+      });
+
       ws.on('test_stopped', () => {
         setTestStatus({
           running: false,
           timeLeft: 0,
           completed: false
+        });
+        // Kalori hesaplama da durdur
+        setCalorieCalculationStatus({
+          active: false,
+          counting: false,
+          capturing: false,
+          analyzing: false,
+          completed: false,
+          countdown: 0
         });
       });
 
@@ -213,6 +290,23 @@ function App() {
     if (connectionStatus.connected && testStatus.running && socket) {
       sendWebSocketMessage('stop_test');
       console.log('Test durdurma komutu gönderildi');
+    }
+  };
+
+  const startCalorieCalculation = () => {
+    if (connectionStatus.connected && !testStatus.running && !calorieCalculationStatus.active && socket) {
+      setCalorieCalculationStatus({
+        active: true,
+        counting: false,
+        capturing: false,
+        analyzing: false,
+        completed: false,
+        countdown: 0
+      });
+      setCapturedFoodImage(null);
+      setFoodAnalysisResults(null);
+      sendWebSocketMessage('take_food_photo');
+      console.log('Kalori hesaplama başlatıldı');
     }
   };
 
@@ -347,6 +441,37 @@ function App() {
                   </div>
                 </div>
                 
+                {/* Kalori Hesaplama Butonu */}
+                <div className="mb-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-orange-900 mb-1 flex items-center">
+                        <Calculator className="h-4 w-4 mr-2" />
+                        Kalori Hesaplama
+                      </h3>
+                      <p className="text-orange-800 text-sm">
+                        Yemek fotoğrafı çekerek kalori hesaplayın
+                      </p>
+                    </div>
+                    <button
+                      onClick={startCalorieCalculation}
+                      disabled={!connectionStatus.connected || testStatus.running || calorieCalculationStatus.active}
+                      className={`
+                        px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2
+                        ${!connectionStatus.connected || testStatus.running || calorieCalculationStatus.active
+                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                          : 'bg-orange-600 hover:bg-orange-700 text-white shadow-sm hover:shadow-md'
+                        }
+                      `}
+                    >
+                      <Image className="h-4 w-4" />
+                      <span>
+                        {calorieCalculationStatus.active ? 'İşleniyor...' : 'Fotoğraf Çek'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+                
                 {/* Test Açıklaması */}
                 {!testStatus.running && !testStatus.completed && (
                   <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -377,6 +502,31 @@ function App() {
                           {testStatus.timeLeft}s
                         </div>
                       )}
+                    </div>
+                  ) : calorieCalculationStatus.active ? (
+                    <div className="bg-slate-100 rounded-lg h-[400px] flex items-center justify-center">
+                      <div className="text-center">
+                        {calorieCalculationStatus.counting && (
+                          <>
+                            <div className="text-6xl font-bold text-orange-600 mb-4">
+                              {calorieCalculationStatus.countdown}
+                            </div>
+                            <p className="text-slate-600 text-lg">Fotoğraf çekiliyor...</p>
+                          </>
+                        )}
+                        {calorieCalculationStatus.capturing && (
+                          <>
+                            <Camera className="h-16 w-16 text-orange-600 mx-auto mb-4 animate-pulse" />
+                            <p className="text-slate-600 text-lg">Fotoğraf çekiliyor...</p>
+                          </>
+                        )}
+                        {calorieCalculationStatus.analyzing && (
+                          <>
+                            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-orange-600 mx-auto mb-4"></div>
+                            <p className="text-slate-600 text-lg">Yemek analiz ediliyor...</p>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="bg-slate-100 rounded-lg h-[400px] flex items-center justify-center">
@@ -485,6 +635,68 @@ function App() {
 
           {/* Sonuçlar Paneli - Sağ Taraf */}
           <div className="space-y-6">
+            
+            {/* Kalori Hesaplama Sonuçları */}
+            {calorieCalculationStatus.completed && foodAnalysisResults && (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
+                  <Calculator className="h-5 w-5 mr-2 text-orange-600" />
+                  Kalori Analizi
+                </h3>
+                
+                {/* Çekilen Fotoğraf */}
+                {capturedFoodImage && (
+                  <div className="mb-4">
+                    <img 
+                      src={`data:image/jpeg;base64,${capturedFoodImage}`}
+                      alt="Çekilen Yemek"
+                      className="w-full h-48 object-cover rounded-lg border border-slate-200"
+                    />
+                  </div>
+                )}
+                
+                {/* Tespit Edilen Yemekler */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
+                    <span className="font-semibold text-orange-900">Toplam Kalori</span>
+                    <span className="text-xl font-bold text-orange-600">
+                      {foodAnalysisResults.total_calories} kcal
+                    </span>
+                  </div>
+                  
+                  {foodAnalysisResults.detected_foods && foodAnalysisResults.detected_foods.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold text-slate-800 mb-2">Tespit Edilen Yemekler</h4>
+                      <div className="space-y-2">
+                        {foodAnalysisResults.detected_foods.map((food, index) => (
+                          <div key={index} className="flex justify-between items-center p-2 bg-slate-50 rounded">
+                            <span className="text-slate-700">{food.name}</span>
+                            <span className="font-medium text-slate-900">{food.calories} kcal</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {foodAnalysisResults.confidence && (
+                    <div className="mt-3">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm text-slate-600">Güvenilirlik</span>
+                        <span className="text-sm font-medium text-slate-900">
+                          {(foodAnalysisResults.confidence * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div 
+                          className="bg-orange-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${foodAnalysisResults.confidence * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             
             {/* Test Sonuçları */}
             {testResults && (
@@ -659,6 +871,20 @@ function App() {
                     <span className="text-sm text-slate-900">{testStatus.timeLeft}s</span>
                   </div>
                 )}
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600">Kalori Hesaplama</span>
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      calorieCalculationStatus.active ? 'bg-orange-500' : 
+                      calorieCalculationStatus.completed ? 'bg-green-500' : 'bg-slate-300'
+                    }`} />
+                    <span className="text-sm text-slate-900">
+                      {calorieCalculationStatus.active ? 'Aktif' : 
+                       calorieCalculationStatus.completed ? 'Tamamlandı' : 'Bekliyor'}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

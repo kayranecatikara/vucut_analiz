@@ -21,6 +21,7 @@ import logging
 import json
 from typing import Optional, Tuple, Dict, Any
 import threading
+import random
 
 # --- AI Libraries ---
 import tensorflow as tf
@@ -65,6 +66,7 @@ heartbeat_active = False
 # Test parametreleri
 TEST_DURATION = 10  # 10 saniye test süresi
 ANALYSIS_INTERVAL = 0.5  # Yarım saniyede bir analiz
+FOOD_CAPTURE_COUNTDOWN = 3  # 3 saniye geri sayım
 
 # Analiz verileri toplama
 analysis_results = []
@@ -86,6 +88,9 @@ final_analysis = {
     'confidence': 0.0,
     'diyet_onerileri': []
 }
+
+# Kalori hesaplama state'leri
+calorie_calculation_active = False
 
 # --- Model Loading ---
 print("🤖 Loading MoveNet model from TensorFlow Hub...")
@@ -122,6 +127,177 @@ def load_movenet_model():
                 return False
     
     return False
+
+def simulate_food_detection(image_data):
+    """Yemek tespiti simülasyonu - gerçek API ile değiştirilecek"""
+    foods_database = [
+        {"name": "Elma", "calories": 95},
+        {"name": "Muz", "calories": 105},
+        {"name": "Tavuk Göğsü (100g)", "calories": 165},
+        {"name": "Brokoli (100g)", "calories": 55},
+        {"name": "Pirinç Pilavı (1 porsiyon)", "calories": 205},
+        {"name": "Yumurta (1 adet)", "calories": 70},
+        {"name": "Ekmek (1 dilim)", "calories": 80},
+        {"name": "Salata (1 porsiyon)", "calories": 35},
+        {"name": "Makarna (1 porsiyon)", "calories": 220},
+        {"name": "Balık (100g)", "calories": 140},
+        {"name": "Peynir (50g)", "calories": 180},
+        {"name": "Domates (1 adet)", "calories": 25},
+        {"name": "Patates (1 orta boy)", "calories": 160},
+        {"name": "Yogurt (1 kase)", "calories": 120},
+        {"name": "Çikolata (50g)", "calories": 250}
+    ]
+    
+    # Rastgele 1-3 yemek seç
+    num_foods = random.randint(1, 3)
+    detected_foods = random.sample(foods_database, num_foods)
+    
+    total_calories = sum(food["calories"] for food in detected_foods)
+    confidence = random.uniform(0.7, 0.95)  # %70-95 güven aralığı
+    
+    return {
+        "detected_foods": detected_foods,
+        "total_calories": total_calories,
+        "confidence": confidence,
+        "analysis_method": "simulated"
+    }
+
+def capture_single_frame():
+    """Tek bir frame yakala (kalori hesaplama için)"""
+    global camera_mode
+    
+    try:
+        if camera_mode == "realsense" and REALSENSE_AVAILABLE:
+            return capture_realsense_frame()
+        else:
+            return capture_webcam_frame()
+    except Exception as e:
+        print(f"❌ Frame yakalama hatası: {e}")
+        return None
+
+def capture_realsense_frame():
+    """RealSense'den tek frame yakala"""
+    pipeline = None
+    try:
+        pipeline = rs.pipeline()
+        config = rs.config()
+        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        
+        profile = pipeline.start(config)
+        
+        # Birkaç frame bekle (kamera stabilize olsun)
+        for _ in range(5):
+            frames = pipeline.wait_for_frames(timeout_ms=1000)
+        
+        # Son frame'i al
+        frames = pipeline.wait_for_frames(timeout_ms=1000)
+        color_frame = frames.get_color_frame()
+        
+        if color_frame:
+            color_image = np.asanyarray(color_frame.get_data())
+            color_image = cv2.flip(color_image, 1)  # Mirror
+            return color_image
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ RealSense frame yakalama hatası: {e}")
+        return None
+    finally:
+        if pipeline:
+            pipeline.stop()
+
+def capture_webcam_frame():
+    """Webcam'den tek frame yakala"""
+    cap = None
+    try:
+        # Çalışan kamera index'ini bul
+        working_cameras = [0, 1, 2, 4, 6]
+        working_camera_index = None
+        
+        for camera_index in working_cameras:
+            test_cap = cv2.VideoCapture(camera_index)
+            if test_cap.isOpened():
+                ret, frame = test_cap.read()
+                if ret and frame is not None:
+                    working_camera_index = camera_index
+                    test_cap.release()
+                    break
+                test_cap.release()
+        
+        if working_camera_index is None:
+            return None
+        
+        cap = cv2.VideoCapture(working_camera_index)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
+        # Birkaç frame bekle (kamera stabilize olsun)
+        for _ in range(5):
+            ret, frame = cap.read()
+        
+        # Son frame'i al
+        ret, frame = cap.read()
+        if ret and frame is not None:
+            frame = cv2.flip(frame, 1)  # Mirror
+            return frame
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ Webcam frame yakalama hatası: {e}")
+        return None
+    finally:
+        if cap:
+            cap.release()
+
+def process_food_photo():
+    """Yemek fotoğrafını işle ve kalori hesapla"""
+    global calorie_calculation_active
+    
+    try:
+        calorie_calculation_active = True
+        
+        # 3-2-1 geri sayım
+        for i in range(FOOD_CAPTURE_COUNTDOWN, 0, -1):
+            safe_emit('food_capture_countdown', {'count': i})
+            socketio.sleep(1)
+        
+        # Fotoğraf çekme başladı
+        safe_emit('food_capture_started')
+        socketio.sleep(0.5)
+        
+        # Frame yakala
+        captured_frame = capture_single_frame()
+        
+        if captured_frame is None:
+            safe_emit('food_analysis_error', {'message': 'Fotoğraf çekilemedi'})
+            return
+        
+        # Frame'i base64'e çevir
+        _, buffer = cv2.imencode('.jpg', captured_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        # Analiz başladı
+        safe_emit('food_analysis_started')
+        socketio.sleep(1)  # Analiz simülasyonu
+        
+        # Yemek tespiti yap (şimdilik simülasyon)
+        food_analysis = simulate_food_detection(img_base64)
+        
+        # Sonuçları gönder
+        safe_emit('food_analysis_result', {
+            'image': img_base64,
+            'analysis': food_analysis
+        })
+        
+        print(f"✅ Kalori hesaplama tamamlandı: {food_analysis['total_calories']} kcal")
+        
+    except Exception as e:
+        print(f"❌ Yemek fotoğrafı işleme hatası: {e}")
+        safe_emit('food_analysis_error', {'message': f'İşleme hatası: {str(e)}'})
+    finally:
+        calorie_calculation_active = False
 
 # Model yüklemeyi dene
 if not load_movenet_model():
@@ -1194,6 +1370,21 @@ def handle_stop_test(data):
     except Exception as e:
         print(f"❌ Test durdurma hatası: {e}")
 
+@socketio.on('take_food_photo')
+def handle_take_food_photo(data=None):
+    """Yemek fotoğrafı çekme isteği"""
+    global calorie_calculation_active
+    
+    try:
+        if not calorie_calculation_active and not test_running:
+            print("📸 Kalori hesaplama için fotoğraf çekiliyor...")
+            socketio.start_background_task(target=process_food_photo)
+        else:
+            safe_emit('food_analysis_error', {'message': 'Başka bir işlem devam ediyor'})
+    except Exception as e:
+        print(f"❌ Fotoğraf çekme hatası: {e}")
+        safe_emit('food_analysis_error', {'message': f'Fotoğraf çekme hatası: {str(e)}'})
+
 # Heartbeat sistemi
 @socketio.on('ping')
 def handle_ping(data):
@@ -1224,6 +1415,8 @@ if __name__ == '__main__':
     print("   - Kararlı WebSocket bağlantısı")
     print("   - Tamamen düzeltilmiş timeout yönetimi")
     print("   - Optimize edilmiş hata yakalama")
+    print("   - Kalori hesaplama özelliği")
+    print("   - Yemek fotoğrafı çekme")
     print()
     
     if REALSENSE_AVAILABLE:
