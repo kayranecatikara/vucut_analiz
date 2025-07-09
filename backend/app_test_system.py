@@ -42,8 +42,8 @@ log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', 
-                   ping_timeout=60, ping_interval=25)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet',
+                   ping_timeout=120, ping_interval=30, logger=False, engineio_logger=False)
 
 # --- Global Variables ---
 test_running = False
@@ -963,7 +963,8 @@ def run_realsense_test():
                 try:
                     _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                     img_base64 = base64.b64encode(buffer).decode('utf-8')
-                    socketio.emit('test_frame', {'frame': img_base64, 'time_left': time_left})
+                    socketio.emit('test_frame', {'frame': img_base64, 'time_left': time_left}, 
+                                 namespace='/', broadcast=False)
                 except Exception as emit_error:
                     print(f"⚠️ Frame gönderme hatası: {emit_error}")
                 
@@ -978,7 +979,7 @@ def run_realsense_test():
         # Test completed
         calculate_final_analysis()
         try:
-            socketio.emit('test_completed', final_analysis)
+            socketio.emit('test_completed', final_analysis, namespace='/', broadcast=False)
         except Exception as e:
             print(f"⚠️ Test completion emit hatası: {e}")
         print(f"✅ Test tamamlandı: {len(analysis_results)} analiz yapıldı")
@@ -986,7 +987,7 @@ def run_realsense_test():
     except Exception as e:
         print(f"❌ RealSense test error: {e}")
         try:
-            socketio.emit('test_error', f'RealSense error: {str(e)}')
+            socketio.emit('test_error', f'RealSense error: {str(e)}', namespace='/', broadcast=False)
         except:
             pass
     
@@ -1082,7 +1083,8 @@ def run_webcam_test():
                 try:
                     _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                     img_base64 = base64.b64encode(buffer).decode('utf-8')
-                    socketio.emit('test_frame', {'frame': img_base64, 'time_left': time_left})
+                    socketio.emit('test_frame', {'frame': img_base64, 'time_left': time_left},
+                                 namespace='/', broadcast=False)
                 except Exception as emit_error:
                     print(f"⚠️ Frame gönderme hatası: {emit_error}")
                 
@@ -1096,7 +1098,7 @@ def run_webcam_test():
         # Test completed
         calculate_final_analysis()
         try:
-            socketio.emit('test_completed', final_analysis)
+            socketio.emit('test_completed', final_analysis, namespace='/', broadcast=False)
         except Exception as e:
             print(f"⚠️ Test completion emit hatası: {e}")
         print(f"✅ Test tamamlandı: {len(analysis_results)} analiz yapıldı")
@@ -1104,7 +1106,7 @@ def run_webcam_test():
     except Exception as e:
         print(f"❌ Webcam test error: {e}")
         try:
-            socketio.emit('test_error', f'Webcam error: {str(e)}')
+            socketio.emit('test_error', f'Webcam error: {str(e)}', namespace='/', broadcast=False)
         except:
             pass
     
@@ -1127,17 +1129,35 @@ def handle_disconnect():
 @socketio.on('start_test')
 def handle_start_test(data):
     global test_running, test_thread
-    if not test_running:
-        test_running = True
-        test_thread = socketio.start_background_task(target=run_body_analysis_test)
-        print("🚀 Vücut analizi testi başlatıldı")
+    try:
+        if not test_running:
+            test_running = True
+            test_thread = socketio.start_background_task(target=run_body_analysis_test)
+            socketio.emit('stream_started', {'type': 'stream_started'}, namespace='/', broadcast=False)
+            print("🚀 Vücut analizi testi başlatıldı")
+        else:
+            print("⚠️ Test zaten çalışıyor")
+    except Exception as e:
+        print(f"❌ Test başlatma hatası: {e}")
+        socketio.emit('test_error', f'Test başlatma hatası: {str(e)}', namespace='/', broadcast=False)
 
 @socketio.on('stop_test')
 def handle_stop_test(data):
     global test_running
-    test_running = False
-    socketio.emit('test_stopped')
-    print("🛑 Test durduruldu")
+    try:
+        test_running = False
+        socketio.emit('test_stopped', namespace='/', broadcast=False)
+        print("🛑 Test durduruldu")
+    except Exception as e:
+        print(f"❌ Test durdurma hatası: {e}")
+
+# Heartbeat sistemi ekle
+@socketio.on('ping')
+def handle_ping(data):
+    try:
+        socketio.emit('pong', {'timestamp': time.time()}, namespace='/', broadcast=False)
+    except Exception as e:
+        print(f"❌ Ping hatası: {e}")
 
 if __name__ == '__main__':
     print("🚀 Starting Test-Based Body Analysis System...")
@@ -1160,8 +1180,12 @@ if __name__ == '__main__':
     
     print()
     try:
-        socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False, 
+                    use_reloader=False, log_output=False)
     except KeyboardInterrupt:
         print("\n🛑 Sistem kapatılıyor...")
+        test_running = False
     except Exception as e:
         print(f"❌ Server hatası: {e}")
+        print("🔄 Sunucu yeniden başlatılıyor...")
+        time.sleep(2)
