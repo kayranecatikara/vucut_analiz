@@ -42,7 +42,8 @@ log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', 
+                   ping_timeout=60, ping_interval=25)
 
 # --- Global Variables ---
 test_running = False
@@ -454,10 +455,28 @@ def calculate_3d_distance_safe(p1: Tuple[int, int], p2: Tuple[int, int],
         depth_image = np.asanyarray(depth_frame.get_data())
         depth_units = depth_frame.get_units()
         
-        depth1 = safe_array_access(depth_image, p1[1], p1[0]) * depth_units
-        depth2 = safe_array_access(depth_image, p2[1], p2[0]) * depth_units
+        # Daha geniş alan ortalaması al (5x5 piksel)
+        depth1_values = []
+        depth2_values = []
         
-        if depth1 <= 0 or depth2 <= 0 or depth1 > 5.0 or depth2 > 5.0:
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                d1 = safe_array_access(depth_image, p1[1] + dy, p1[0] + dx) * depth_units
+                d2 = safe_array_access(depth_image, p2[1] + dy, p2[0] + dx) * depth_units
+                if d1 > 0: depth1_values.append(d1)
+                if d2 > 0: depth2_values.append(d2)
+        
+        if not depth1_values or not depth2_values:
+            return None
+            
+        depth1 = np.median(depth1_values)  # Median daha kararlı
+        depth2 = np.median(depth2_values)
+        
+        if depth1 <= 0.3 or depth2 <= 0.3 or depth1 > 3.0 or depth2 > 3.0:
+            return None
+            
+        # Derinlik farkı çok fazlaysa güvenilmez
+        if abs(depth1 - depth2) > 0.5:
             return None
             
         point1_3d = rs.rs2_deproject_pixel_to_point(depth_intrinsics, [p1[0], p1[1]], depth1)
@@ -466,7 +485,8 @@ def calculate_3d_distance_safe(p1: Tuple[int, int], p2: Tuple[int, int],
         distance = np.linalg.norm(np.subtract(point1_3d, point2_3d))
         distance_cm = distance * 100
         
-        if distance_cm > 200:
+        # Daha gerçekçi sınırlar
+        if distance_cm < 15 or distance_cm > 80:
             return None
             
         return distance_cm
@@ -512,6 +532,18 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
                 # RealSense 3D measurement
                 shoulder_width = calculate_3d_distance_safe(p1, p2, depth_frame, depth_intrinsics)
                 print(f"📏 3D Omuz genişliği: {shoulder_width}")
+                
+                # 3D başarısız olursa 2D'ye geç
+                if shoulder_width is None:
+                    pixel_distance = calculate_pixel_distance(p1, p2)
+                    # Mesafeye göre kalibre et
+                    if analysis_data.get('mesafe', 0) > 0:
+                        distance_factor = analysis_data['mesafe']
+                        shoulder_width = (pixel_distance / width) * (45 * distance_factor)
+                    else:
+                        shoulder_width = (pixel_distance / width) * 90
+                    shoulder_width = max(25, min(75, shoulder_width))
+                    print(f"📏 2D Fallback Omuz genişliği: {shoulder_width}")
             else:
                 # Webcam pixel-based measurement
                 pixel_distance = calculate_pixel_distance(p1, p2)
@@ -532,6 +564,17 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
                 # RealSense 3D measurement
                 waist_width = calculate_3d_distance_safe(p1, p2, depth_frame, depth_intrinsics)
                 print(f"📏 3D Bel genişliği: {waist_width}")
+                
+                # 3D başarısız olursa 2D'ye geç
+                if waist_width is None:
+                    pixel_distance = calculate_pixel_distance(p1, p2)
+                    if analysis_data.get('mesafe', 0) > 0:
+                        distance_factor = analysis_data['mesafe']
+                        waist_width = (pixel_distance / width) * (35 * distance_factor)
+                    else:
+                        waist_width = (pixel_distance / width) * 70
+                    waist_width = max(20, min(55, waist_width))
+                    print(f"📏 2D Fallback Bel genişliği: {waist_width}")
             else:
                 # Webcam pixel-based measurement
                 pixel_distance = calculate_pixel_distance(p1, p2)
@@ -831,6 +874,20 @@ def run_realsense_test():
         config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
         
         profile = realsense_pipeline.start(config)
+        
+        # Depth sensor ayarları
+        depth_sensor = profile.get_device().first_depth_sensor()
+        try:
+            # Daha iyi derinlik için ayarlar
+            depth_sensor.set_option(rs.option.visual_preset, 3)  # High Accuracy
+            depth_sensor.set_option(rs.option.laser_power, 300)  # Yüksek laser gücü
+            depth_sensor.set_option(rs.option.confidence_threshold, 1)
+            depth_sensor.set_option(rs.option.min_distance, 0)
+            depth_sensor.set_option(rs.option.enable_auto_exposure, 1)
+            print("✅ RealSense depth sensor optimize edildi")
+        except Exception as e:
+            print(f"⚠️ Depth sensor ayarları uygulanamadı: {e}")
+        
         depth_intrinsics = profile.get_stream(rs.stream.depth).as_video_stream_profile().get_intrinsics()
         
         print("✅ RealSense test başlatıldı")
@@ -841,7 +898,7 @@ def run_realsense_test():
         
         while test_running and (time.time() - start_time) < TEST_DURATION:
             try:
-                frames = realsense_pipeline.wait_for_frames(timeout_ms=1000)
+                frames = realsense_pipeline.wait_for_frames(timeout_ms=5000)
                 
                 align = rs.align(rs.stream.color)
                 aligned_frames = align.process(frames)
@@ -851,6 +908,12 @@ def run_realsense_test():
                 
                 if not color_frame or not depth_frame:
                     continue
+                
+                # Depth filtering
+                depth_frame = rs.decimation_filter(2).process(depth_frame)
+                depth_frame = rs.spatial_filter().process(depth_frame)
+                depth_frame = rs.temporal_filter().process(depth_frame)
+                depth_frame = rs.hole_filling_filter().process(depth_frame)
                 
                 color_image = np.asanyarray(color_frame.get_data())
                 color_image = cv2.flip(color_image, 1)
@@ -865,7 +928,8 @@ def run_realsense_test():
                         keypoints, color_image.shape, depth_frame, depth_intrinsics
                     )
                     
-                    if analysis_data['confidence'] > 0.3:
+                    # Daha düşük confidence threshold
+                    if analysis_data['confidence'] > 0.2:
                         analysis_results.append(analysis_data)
                         print(f"📊 Analiz #{len(analysis_results)}: {analysis_data['vucut_tipi']}")
                     
@@ -896,28 +960,42 @@ def run_realsense_test():
                 combined_frame = np.hstack((rgb_frame, depth_viz))
                 
                 # Send video frame
-                _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
-                img_base64 = base64.b64encode(buffer).decode('utf-8')
-                socketio.emit('test_frame', {'frame': img_base64, 'time_left': time_left})
+                try:
+                    _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                    img_base64 = base64.b64encode(buffer).decode('utf-8')
+                    socketio.emit('test_frame', {'frame': img_base64, 'time_left': time_left})
+                except Exception as emit_error:
+                    print(f"⚠️ Frame gönderme hatası: {emit_error}")
                 
                 socketio.sleep(0.033)  # ~30 FPS
                 
             except Exception as e:
                 print(f"❌ RealSense loop error: {e}")
-                break
+                # Break yerine continue - bağlantı kopmasın
+                socketio.sleep(0.1)
+                continue
         
         # Test completed
         calculate_final_analysis()
-        socketio.emit('test_completed', final_analysis)
+        try:
+            socketio.emit('test_completed', final_analysis)
+        except Exception as e:
+            print(f"⚠️ Test completion emit hatası: {e}")
         print(f"✅ Test tamamlandı: {len(analysis_results)} analiz yapıldı")
         
     except Exception as e:
         print(f"❌ RealSense test error: {e}")
-        socketio.emit('test_error', f'RealSense error: {str(e)}')
+        try:
+            socketio.emit('test_error', f'RealSense error: {str(e)}')
+        except:
+            pass
     
     finally:
         if realsense_pipeline:
-            realsense_pipeline.stop()
+            try:
+                realsense_pipeline.stop()
+            except:
+                pass
         print("🛑 RealSense test stopped")
 
 def run_webcam_test():
@@ -970,7 +1048,7 @@ def run_webcam_test():
                 if current_time - last_analysis_time >= ANALYSIS_INTERVAL:
                     analysis_data = analyze_body_measurements(keypoints, frame.shape)
                     
-                    if analysis_data['confidence'] > 0.3:
+                    if analysis_data['confidence'] > 0.2:
                         analysis_results.append(analysis_data)
                         print(f"📊 Analiz #{len(analysis_results)}: {analysis_data['vucut_tipi']}")
                     
@@ -1001,24 +1079,34 @@ def run_webcam_test():
                 combined_frame = np.hstack((rgb_frame, depth_viz))
                 
                 # Send video frame
-                _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
-                img_base64 = base64.b64encode(buffer).decode('utf-8')
-                socketio.emit('test_frame', {'frame': img_base64, 'time_left': time_left})
+                try:
+                    _, buffer = cv2.imencode('.jpg', combined_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                    img_base64 = base64.b64encode(buffer).decode('utf-8')
+                    socketio.emit('test_frame', {'frame': img_base64, 'time_left': time_left})
+                except Exception as emit_error:
+                    print(f"⚠️ Frame gönderme hatası: {emit_error}")
                 
                 socketio.sleep(0.033)  # ~30 FPS
                 
             except Exception as e:
                 print(f"❌ Webcam loop error: {e}")
-                break
+                socketio.sleep(0.1)
+                continue
         
         # Test completed
         calculate_final_analysis()
-        socketio.emit('test_completed', final_analysis)
+        try:
+            socketio.emit('test_completed', final_analysis)
+        except Exception as e:
+            print(f"⚠️ Test completion emit hatası: {e}")
         print(f"✅ Test tamamlandı: {len(analysis_results)} analiz yapıldı")
         
     except Exception as e:
         print(f"❌ Webcam test error: {e}")
-        socketio.emit('test_error', f'Webcam error: {str(e)}')
+        try:
+            socketio.emit('test_error', f'Webcam error: {str(e)}')
+        except:
+            pass
     
     finally:
         if camera:
@@ -1061,6 +1149,8 @@ if __name__ == '__main__':
     print("   - Sağ tarafta detaylı sonuçlar")
     print("   - Kişiselleştirilmiş diyet önerileri")
     print("   - Test sonunda kamera kapanır")
+    print("   - Gelişmiş omuz algılama")
+    print("   - Kararlı WebSocket bağlantısı")
     print()
     
     if REALSENSE_AVAILABLE:
@@ -1069,4 +1159,9 @@ if __name__ == '__main__':
         print("⚠️ RealSense support: Not available (webcam only)")
     
     print()
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    try:
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    except KeyboardInterrupt:
+        print("\n🛑 Sistem kapatılıyor...")
+    except Exception as e:
+        print(f"❌ Server hatası: {e}")
