@@ -125,13 +125,17 @@ DIYET_ONERILERI = {
         'ozellikler': [
             'İnce yapılı ve hızlı metabolizma',
             'Kilo almakta zorlanır',
-            'Kas yapmak için daha fazla kalori gerekir'
+            'Kas yapmak için daha fazla kalori gerekir',
+            'Doğal olarak düşük vücut yağ oranı',
+            'Uzun ve ince kemik yapısı'
         ],
         'beslenme_ilkeleri': [
             'Yüksek kalori alımı (günde 2500-3000 kalori)',
             'Karbonhidrat ağırlıklı beslenme (%50-60)',
             'Protein alımı (vücut ağırlığının kg başına 1.5-2g)',
-            'Sağlıklı yağlar (%20-30)'
+            'Sağlıklı yağlar (%20-30)',
+            'Sık öğün tüketimi (6-8 öğün/gün)',
+            'Antrenman öncesi ve sonrası beslenmeye dikkat'
         ],
         'onerilen_besinler': [
             'Tam tahıl ekmek ve makarna',
@@ -140,34 +144,91 @@ DIYET_ONERILERI = {
             'Fındık, badem, ceviz',
             'Avokado, zeytinyağı',
             'Muz, hurma, kuru meyve',
-            'Süt, yoğurt, peynir'
+            'Süt, yoğurt, peynir',
+            'Protein tozu ve gainers',
+            'Tatlı patates, yulaf'
         ],
         'kacinilmasi_gerekenler': [
             'Aşırı işlenmiş gıdalar',
             'Şekerli içecekler',
             'Trans yağlar',
-            'Aşırı kafein'
+            'Aşırı kafein',
+            'Boş kalori içeren atıştırmalıklar'
         ],
         'ogun_plani': {
-            'kahvalti': 'Yulaf ezmesi + muz + fındık + süt',
-            'ara_ogun_1': 'Tam tahıl kraker + peynir',
-            'ogle': 'Tavuk + pirinç + salata + zeytinyağı',
-            'ara_ogun_2': 'Protein smoothie + meyve',
-            'aksam': 'Balık + bulgur pilavı + sebze',
-            'gece': 'Yoğurt + bal + ceviz'
+            'pazartesi': {
+                'kahvalti': 'Yulaf ezmesi + muz + fındık + süt + bal',
+                'ara_ogun_1': 'Tam tahıl kraker + peynir + ceviz',
+                'ogle': 'Tavuk + pirinç + salata + zeytinyağı + avokado',
+                'ara_ogun_2': 'Protein smoothie + meyve + yoğurt',
+                'aksam': 'Balık + bulgur pilavı + sebze + zeytinyağı',
+                'gece': 'Yoğurt + bal + ceviz + hurma'
+            },
+            'sali': {
+                'kahvalti': 'Omlet (3 yumurta) + tam tahıl ekmek + domates + peynir',
+                'ara_ogun_1': 'Muz + badem + süt',
+                'ogle': 'Dana eti + makarna + salata + parmesan',
+                'ara_ogun_2': 'Protein bar + elma',
+                'aksam': 'Somon + quinoa + buharda sebze',
+                'gece': 'Süt + tarçın + bal + fındık'
+            },
+            'carsamba': {
+                'kahvalti': 'Müsli + yoğurt + meyve + fındık',
+                'ara_ogun_1': 'Tam tahıl sandviç + hindi + peynir',
+                'ogle': 'Köfte + bulgur + cacık + salata',
+                'ara_ogun_2': 'Smoothie (muz + protein + süt)',
+                'aksam': 'Tavuk + tatlı patates + yeşil fasulye',
+                'gece': 'Yoğurt + granola + bal'
+            },
+            'persembe': {
+                'kahvalti': 'Pancake (yulaf unu) + meyve + akçaağaç şurubu',
+                'ara_ogun_1': 'Kuruyemiş karışımı + kuru meyve',
+                'ogle': 'Balık + pirinç + sebze sote',
+                'ara_ogun_2': 'Yoğurt + meyve + granola',
+                'aksam': 'Tavuk + makarna + brokoli',
+                'gece': 'Süt + bisküvi + fındık ezmesi'
+            },
+            'cuma': {
+                'kahvalti': 'Menemen + peynir + tam tahıl ekmek',
+                'ara_ogun_1': 'Protein shake + muz',
+                'ogle': 'Tavuk döner + bulgur + salata',
+                'ara_ogun_2': 'Elma + fındık ezmesi',
+                'aksam': 'Balık + pirinç + karışık sebze',
+                'gece': 'Yoğurt + bal + ceviz'
+            },
+            'cumartesi': {
+                'kahvalti': 'French toast + meyve + süt',
+                'ara_ogun_1': 'Smoothie bowl + granola',
+                'ogle': 'Köri tavuk + pirinç + naan',
+                'ara_ogun_2': 'Protein bar + kuruyemiş',
+                'aksam': 'Biftek + patates + salata',
+                'gece': 'Süt + tarçın + bal'
+            },
+            'pazar': {
+                'kahvalti': 'Kahvaltı tabağı (yumurta + peynir + zeytin + ekmek)',
+                'ara_ogun_1': 'Meyve salatası + yoğurt',
+                'ogle': 'Kuzu eti + bulgur + sebze',
+                'ara_ogun_2': 'Protein smoothie + hurma',
+                'aksam': 'Balık + quinoa + asparagus',
+                'gece': 'Yoğurt + granola + meyve'
+            }
         }
     },
     'Mezomorf': {
         'ozellikler': [
             'Atletik yapı ve orta metabolizma',
             'Kas yapma ve yağ yakma dengeli',
-            'Vücut kompozisyonunu korumak kolay'
+            'Vücut kompozisyonunu korumak kolay',
+            'Doğal kas yapısı iyi',
+            'Orta kemik yapısı'
         ],
         'beslenme_ilkeleri': [
             'Dengeli kalori alımı (günde 2000-2500 kalori)',
             'Dengeli makro besin dağılımı',
             'Protein alımı (vücut ağırlığının kg başına 1.2-1.5g)',
-            'Karbonhidrat (%40-45), Yağ (%25-30)'
+            'Karbonhidrat (%40-45), Yağ (%25-30)',
+            'Düzenli öğün saatleri (5-6 öğün/gün)',
+            'Antrenman periyodizasyonuna uygun beslenme'
         ],
         'onerilen_besinler': [
             'Yağsız et, tavuk, balık',
@@ -176,34 +237,91 @@ DIYET_ONERILERI = {
             'Taze meyve ve sebzeler',
             'Bakliyat (mercimek, nohut)',
             'Fındık ve tohum',
-            'Zeytinyağı, balık yağı'
+            'Zeytinyağı, balık yağı',
+            'Quinoa, bulgur',
+            'Yeşil yapraklı sebzeler'
         ],
         'kacinilmasi_gerekenler': [
             'Aşırı kalori alımı',
             'Rafine şeker',
             'İşlenmiş et ürünleri',
-            'Aşırı doymuş yağ'
+            'Aşırı doymuş yağ',
+            'Alkol'
         ],
         'ogun_plani': {
-            'kahvalti': 'Omlet + tam tahıl ekmek + domates',
-            'ara_ogun_1': 'Elma + badem',
-            'ogle': 'Izgara tavuk + quinoa + yeşil salata',
-            'ara_ogun_2': 'Yoğurt + meyve',
-            'aksam': 'Balık + tatlı patates + buharda sebze',
-            'gece': 'Az yağlı süt + tarçın'
+            'pazartesi': {
+                'kahvalti': 'Omlet + tam tahıl ekmek + domates + zeytinyağı',
+                'ara_ogun_1': 'Elma + badem + yoğurt',
+                'ogle': 'Izgara tavuk + quinoa + yeşil salata + zeytinyağı',
+                'ara_ogun_2': 'Yoğurt + meyve + ceviz',
+                'aksam': 'Balık + tatlı patates + buharda sebze',
+                'gece': 'Az yağlı süt + tarçın + bal'
+            },
+            'sali': {
+                'kahvalti': 'Yulaf ezmesi + meyve + fındık + süt',
+                'ara_ogun_1': 'Tam tahıl kraker + peynir',
+                'ogle': 'Dana eti + bulgur + salata',
+                'ara_ogun_2': 'Smoothie (meyve + yoğurt)',
+                'aksam': 'Tavuk + pirinç + sebze sote',
+                'gece': 'Yoğurt + bal + ceviz'
+            },
+            'carsamba': {
+                'kahvalti': 'Peynirli omlet + tam tahıl ekmek + salatalık',
+                'ara_ogun_1': 'Muz + fındık ezmesi',
+                'ogle': 'Balık + quinoa + yeşil fasulye',
+                'ara_ogun_2': 'Yoğurt + granola',
+                'aksam': 'Tavuk + bulgur + karışık salata',
+                'gece': 'Süt + tarçın'
+            },
+            'persembe': {
+                'kahvalti': 'Müsli + yoğurt + meyve',
+                'ara_ogun_1': 'Elma + badem',
+                'ogle': 'Köfte + pirinç + cacık',
+                'ara_ogun_2': 'Protein smoothie',
+                'aksam': 'Somon + tatlı patates + brokoli',
+                'gece': 'Yoğurt + bal'
+            },
+            'cuma': {
+                'kahvalti': 'Menemen + peynir + ekmek',
+                'ara_ogun_1': 'Kuruyemiş karışımı',
+                'ogle': 'Tavuk + makarna + salata',
+                'ara_ogun_2': 'Yoğurt + meyve',
+                'aksam': 'Balık + bulgur + sebze',
+                'gece': 'Süt + bisküvi'
+            },
+            'cumartesi': {
+                'kahvalti': 'Pancake + meyve + bal',
+                'ara_ogun_1': 'Smoothie bowl',
+                'ogle': 'Izgara et + quinoa + salata',
+                'ara_ogun_2': 'Yoğurt + granola',
+                'aksam': 'Tavuk + pirinç + sebze',
+                'gece': 'Süt + tarçın + bal'
+            },
+            'pazar': {
+                'kahvalti': 'Kahvaltı tabağı (dengeli)',
+                'ara_ogun_1': 'Meyve + yoğurt',
+                'ogle': 'Balık + bulgur + salata',
+                'ara_ogun_2': 'Fındık + kuru meyve',
+                'aksam': 'Tavuk + quinoa + sebze',
+                'gece': 'Yoğurt + bal + ceviz'
+            }
         }
     },
     'Endomorf': {
         'ozellikler': [
             'Geniş yapılı ve yavaş metabolizma',
             'Kilo almaya eğilimli',
-            'Yağ yakmak için daha fazla çaba gerekir'
+            'Yağ yakmak için daha fazla çaba gerekir',
+            'Doğal olarak yüksek vücut yağ oranı',
+            'Geniş kemik yapısı'
         ],
         'beslenme_ilkeleri': [
             'Kontrollü kalori alımı (günde 1500-2000 kalori)',
             'Düşük karbonhidrat (%30-35)',
             'Yüksek protein (vücut ağırlığının kg başına 1.5-2g)',
-            'Orta yağ alımı (%25-30)'
+            'Orta yağ alımı (%25-30)',
+            'Sık ve küçük öğünler (6-7 öğün/gün)',
+            'Glisemik indeksi düşük besinler'
         ],
         'onerilen_besinler': [
             'Yağsız protein (tavuk göğsü, balık)',
@@ -212,22 +330,76 @@ DIYET_ONERILERI = {
             'Tam tahıl ürünleri (az miktarda)',
             'Bakliyat ve mercimek',
             'Fındık (kontrollü miktarda)',
-            'Zeytinyağı, avokado'
+            'Zeytinyağı, avokado',
+            'Brokoli, karnabahar',
+            'Yaban mersini, çilek'
         ],
         'kacinilmasi_gerekenler': [
             'Basit karbonhidratlar',
             'Şekerli gıdalar ve içecekler',
             'İşlenmiş gıdalar',
             'Yüksek kalorili atıştırmalıklar',
-            'Beyaz ekmek, pasta'
+            'Beyaz ekmek, pasta',
+            'Alkol',
+            'Geç saatlerde yemek'
         ],
         'ogun_plani': {
-            'kahvalti': 'Protein omlet + sebze + az zeytinyağı',
-            'ara_ogun_1': 'Çiğ badem (10-15 adet)',
-            'ogle': 'Izgara balık + bol salata + limon',
-            'ara_ogun_2': 'Yoğurt (şekersiz) + tarçın',
-            'aksam': 'Tavuk + buharda brokoli + bulgur (az)',
-            'gece': 'Bitki çayı'
+            'pazartesi': {
+                'kahvalti': 'Protein omlet + sebze + az zeytinyağı + yeşil çay',
+                'ara_ogun_1': 'Çiğ badem (10-15 adet) + yeşil elma',
+                'ogle': 'Izgara balık + bol salata + limon + zeytinyağı',
+                'ara_ogun_2': 'Yoğurt (şekersiz) + tarçın + ceviz',
+                'aksam': 'Tavuk + buharda brokoli + bulgur (az)',
+                'gece': 'Bitki çayı + badem (5-6 adet)'
+            },
+            'sali': {
+                'kahvalti': 'Sebzeli omlet + domates + salatalık',
+                'ara_ogun_1': 'Yoğurt (şekersiz) + çilek',
+                'ogle': 'Tavuk salatası + yeşil yapraklar + zeytinyağı',
+                'ara_ogun_2': 'Fındık (10 adet) + yeşil çay',
+                'aksam': 'Balık + karnabahar + az bulgur',
+                'gece': 'Bitki çayı'
+            },
+            'carsamba': {
+                'kahvalti': 'Protein shake + sebze + avokado',
+                'ara_ogun_1': 'Elma + badem ezmesi (az)',
+                'ogle': 'Dana eti + bol salata + limon',
+                'ara_ogun_2': 'Yoğurt + yaban mersini',
+                'aksam': 'Tavuk + buharda sebze + quinoa (az)',
+                'gece': 'Yeşil çay + ceviz (3-4 adet)'
+            },
+            'persembe': {
+                'kahvalti': 'Omlet + ıspanak + mantar',
+                'ara_ogun_1': 'Yoğurt + tarçın',
+                'ogle': 'Balık + yeşil salata + avokado',
+                'ara_ogun_2': 'Badem (8-10 adet) + çay',
+                'aksam': 'Tavuk + brokoli + tatlı patates (az)',
+                'gece': 'Bitki çayı'
+            },
+            'cuma': {
+                'kahvalti': 'Protein omlet + sebze karışımı',
+                'ara_ogun_1': 'Çilek + yoğurt (şekersiz)',
+                'ogle': 'Izgara tavuk + bol yeşillik + zeytinyağı',
+                'ara_ogun_2': 'Fındık + yeşil çay',
+                'aksam': 'Balık + asparagus + bulgur (az)',
+                'gece': 'Bitki çayı + badem (5 adet)'
+            },
+            'cumartesi': {
+                'kahvalti': 'Sebzeli scrambled egg + domates',
+                'ara_ogun_1': 'Yoğurt + yaban mersini',
+                'ogle': 'Balık salatası + yeşil yapraklar',
+                'ara_ogun_2': 'Elma + badem (8 adet)',
+                'aksam': 'Tavuk + karışık sebze + quinoa (az)',
+                'gece': 'Yeşil çay'
+            },
+            'pazar': {
+                'kahvalti': 'Protein omlet + avokado + domates',
+                'ara_ogun_1': 'Yoğurt + tarçın + ceviz (3 adet)',
+                'ogle': 'Izgara et + büyük salata + limon',
+                'ara_ogun_2': 'Çilek + badem (6 adet)',
+                'aksam': 'Balık + buharda sebze + bulgur (az)',
+                'gece': 'Bitki çayı'
+            }
         }
     }
 }
