@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Camera, Activity, Users, Zap, AlertCircle, Play, Square, Clock, Target, Utensils } from 'lucide-react';
+import { Camera, Activity, Users, Zap, AlertCircle, Play, Square, Clock, Target, Utensils, Calendar, ChefHat } from 'lucide-react';
 import { io } from 'socket.io-client';
 
 function App() {
@@ -167,6 +167,23 @@ function App() {
     }
   };
 
+  // Haftalık yemek planı oluşturma
+  const createWeeklyMealPlan = (dietData) => {
+    if (!dietData || !dietData.ogun_plani) return null;
+
+    const days = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+    const meals = [
+      { key: 'kahvalti', name: 'Kahvaltı', icon: '🌅' },
+      { key: 'ara_ogun_1', name: 'Ara Öğün 1', icon: '🍎' },
+      { key: 'ogle', name: 'Öğle', icon: '☀️' },
+      { key: 'ara_ogun_2', name: 'Ara Öğün 2', icon: '🥜' },
+      { key: 'aksam', name: 'Akşam', icon: '🌙' },
+      { key: 'gece', name: 'Gece', icon: '🌃' }
+    ];
+
+    return { days, meals, plan: dietData.ogun_plani };
+  };
+
   useEffect(() => {
     connectWebSocket();
     
@@ -179,6 +196,8 @@ function App() {
       }
     };
   }, []);
+
+  const weeklyPlan = testResults?.diyet_onerileri ? createWeeklyMealPlan(testResults.diyet_onerileri) : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -214,8 +233,9 @@ function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Test Alanı */}
-          <div className="lg:col-span-2">
+          {/* Test Alanı - Sol Taraf */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Kamera Test Alanı */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -302,9 +322,96 @@ function App() {
                 </div>
               </div>
             </div>
+
+            {/* Haftalık Yemek Planı Tablosu */}
+            {weeklyPlan && (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h3 className="text-xl font-semibold text-slate-900 mb-6 flex items-center">
+                  <Calendar className="h-5 w-5 mr-2 text-green-600" />
+                  Haftalık Yemek Planı - {testResults.vucut_tipi}
+                </h3>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="border border-slate-200 px-3 py-2 text-left font-semibold text-slate-700">
+                          Öğün
+                        </th>
+                        {weeklyPlan.days.map(day => (
+                          <th key={day} className="border border-slate-200 px-3 py-2 text-center font-semibold text-slate-700 min-w-[120px]">
+                            {day}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {weeklyPlan.meals.map(meal => (
+                        <tr key={meal.key} className="hover:bg-slate-50">
+                          <td className="border border-slate-200 px-3 py-3 font-medium text-slate-800 bg-slate-50">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-lg">{meal.icon}</span>
+                              <span>{meal.name}</span>
+                            </div>
+                          </td>
+                          {weeklyPlan.days.map(day => (
+                            <td key={`${meal.key}-${day}`} className="border border-slate-200 px-3 py-3 text-sm text-slate-600">
+                              {weeklyPlan.plan[meal.key] || '—'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Ek Bilgiler */}
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                    <h4 className="font-semibold text-green-800 mb-2 flex items-center">
+                      <ChefHat className="h-4 w-4 mr-2" />
+                      Beslenme İpuçları
+                    </h4>
+                    <ul className="text-green-700 text-sm space-y-1">
+                      <li>• Öğünleri düzenli saatlerde tüketin</li>
+                      <li>• Bol su için (günde 2-3 litre)</li>
+                      <li>• Porsiyonları kontrol edin</li>
+                      <li>• Yavaş yemek yiyin</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h4 className="font-semibold text-blue-800 mb-2">Egzersiz Önerileri</h4>
+                    <ul className="text-blue-700 text-sm space-y-1">
+                      {testResults.vucut_tipi === 'Ektomorf' && (
+                        <>
+                          <li>• Ağırlık antrenmanı (3-4 gün/hafta)</li>
+                          <li>• Kısa süreli kardio</li>
+                          <li>• Compound hareketler</li>
+                        </>
+                      )}
+                      {testResults.vucut_tipi === 'Mezomorf' && (
+                        <>
+                          <li>• Karma antrenman programı</li>
+                          <li>• Orta süreli kardio</li>
+                          <li>• Çeşitli spor aktiviteleri</li>
+                        </>
+                      )}
+                      {testResults.vucut_tipi === 'Endomorf' && (
+                        <>
+                          <li>• Yoğun kardio (5-6 gün/hafta)</li>
+                          <li>• Yüksek tekrarlı ağırlık</li>
+                          <li>• Aktif yaşam tarzı</li>
+                        </>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Sonuçlar Paneli */}
+          {/* Sonuçlar Paneli - Sağ Taraf */}
           <div className="space-y-6">
             
             {/* Test Sonuçları */}
@@ -390,21 +497,21 @@ function App() {
               </div>
             )}
 
-            {/* Diyet Önerileri */}
+            {/* Beslenme Özeti */}
             {testResults && testResults.diyet_onerileri && Object.keys(testResults.diyet_onerileri).length > 0 && (
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                 <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
                   <Utensils className="h-5 w-5 mr-2 text-green-600" />
-                  Kişisel Diyet Önerileri
+                  Beslenme Özeti
                 </h3>
                 
-                <div className="space-y-6">
-                  {/* Özellikler */}
+                <div className="space-y-4">
+                  {/* Vücut Tipi Özellikleri */}
                   {testResults.diyet_onerileri.ozellikler && (
                     <div>
-                      <h4 className="font-semibold text-slate-800 mb-2">Vücut Tipi Özellikleri</h4>
+                      <h4 className="font-semibold text-slate-800 mb-2">Özellikleriniz</h4>
                       <ul className="text-sm text-slate-600 space-y-1">
-                        {testResults.diyet_onerileri.ozellikler.map((ozellik, index) => (
+                        {testResults.diyet_onerileri.ozellikler.slice(0, 3).map((ozellik, index) => (
                           <li key={index} className="flex items-start">
                             <span className="text-green-500 mr-2">•</span>
                             {ozellik}
@@ -419,7 +526,7 @@ function App() {
                     <div>
                       <h4 className="font-semibold text-slate-800 mb-2">Beslenme İlkeleri</h4>
                       <ul className="text-sm text-slate-600 space-y-1">
-                        {testResults.diyet_onerileri.beslenme_ilkeleri.map((ilke, index) => (
+                        {testResults.diyet_onerileri.beslenme_ilkeleri.slice(0, 3).map((ilke, index) => (
                           <li key={index} className="flex items-start">
                             <span className="text-blue-500 mr-2">•</span>
                             {ilke}
@@ -429,34 +536,18 @@ function App() {
                     </div>
                   )}
 
-                  {/* Önerilen Besinler */}
-                  {testResults.diyet_onerileri.onerilen_besinler && (
+                  {/* Kaçınılması Gerekenler */}
+                  {testResults.diyet_onerileri.kacinilmasi_gerekenler && (
                     <div>
-                      <h4 className="font-semibold text-slate-800 mb-2">Önerilen Besinler</h4>
-                      <div className="grid grid-cols-1 gap-1">
-                        {testResults.diyet_onerileri.onerilen_besinler.map((besin, index) => (
-                          <span key={index} className="text-sm text-slate-600 bg-green-50 px-2 py-1 rounded">
-                            {besin}
-                          </span>
+                      <h4 className="font-semibold text-slate-800 mb-2">Kaçınılması Gerekenler</h4>
+                      <ul className="text-sm text-slate-600 space-y-1">
+                        {testResults.diyet_onerileri.kacinilmasi_gerekenler.slice(0, 3).map((item, index) => (
+                          <li key={index} className="flex items-start">
+                            <span className="text-red-500 mr-2">•</span>
+                            {item}
+                          </li>
                         ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Örnek Öğün Planı */}
-                  {testResults.diyet_onerileri.ogun_plani && (
-                    <div>
-                      <h4 className="font-semibold text-slate-800 mb-2">Örnek Günlük Öğün Planı</h4>
-                      <div className="space-y-2">
-                        {Object.entries(testResults.diyet_onerileri.ogun_plani).map(([ogun, plan]) => (
-                          <div key={ogun} className="text-sm">
-                            <span className="font-medium text-slate-700 capitalize">
-                              {ogun.replace('_', ' ')}:
-                            </span>
-                            <span className="text-slate-600 ml-2">{plan}</span>
-                          </div>
-                        ))}
-                      </div>
+                      </ul>
                     </div>
                   )}
                 </div>
