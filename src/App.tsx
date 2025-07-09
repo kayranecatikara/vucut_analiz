@@ -22,7 +22,9 @@ function App() {
   // WebSocket bağlantısı ve otomatik yeniden bağlanma
   const connectWebSocket = () => {
     try {
-      const ws = io(`http://${window.location.hostname}:5000`, {
+      // WebContainer ortamında doğru backend URL'ini oluştur
+      const backendUrl = window.location.origin.replace(':3000', ':5000');
+      const ws = io(backendUrl, {
         transports: ['websocket'],
         autoConnect: true,
         reconnection: true,
