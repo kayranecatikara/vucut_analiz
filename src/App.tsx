@@ -169,9 +169,13 @@ function App() {
 
   // Haftalık yemek planı oluşturma
   const createWeeklyMealPlan = (dietData) => {
-    if (!dietData || !dietData.ogun_plani) return null;
+    if (!dietData || !dietData.ogun_plani) {
+      console.log('Diet data veya ogun_plani bulunamadı:', dietData);
+      return null;
+    }
 
-    const days = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+    const days = ['pazartesi', 'sali', 'carsamba', 'persembe', 'cuma', 'cumartesi', 'pazar'];
+    const dayNames = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
     const meals = [
       { key: 'kahvalti', name: 'Kahvaltı', icon: '🌅' },
       { key: 'ara_ogun_1', name: 'Ara Öğün 1', icon: '🍎' },
@@ -181,7 +185,8 @@ function App() {
       { key: 'gece', name: 'Gece', icon: '🌃' }
     ];
 
-    return { days, meals, plan: dietData.ogun_plani };
+    console.log('Ogun plani:', dietData.ogun_plani);
+    return { days, dayNames, meals, plan: dietData.ogun_plani };
   };
 
   useEffect(() => {
@@ -340,7 +345,7 @@ function App() {
                         </th>
                         {weeklyPlan.days.map(day => (
                           <th key={day} className="border border-slate-200 px-3 py-2 text-center font-semibold text-slate-700 min-w-[120px]">
-                            {day}
+                            {weeklyPlan.dayNames[weeklyPlan.days.indexOf(day)]}
                           </th>
                         ))}
                       </tr>
@@ -356,7 +361,7 @@ function App() {
                           </td>
                           {weeklyPlan.days.map(day => (
                             <td key={`${meal.key}-${day}`} className="border border-slate-200 px-3 py-3 text-sm text-slate-600">
-                              {weeklyPlan.plan[meal.key] || '—'}
+                              {weeklyPlan.plan[day] && weeklyPlan.plan[day][meal.key] ? weeklyPlan.plan[day][meal.key] : '—'}
                             </td>
                           ))}
                         </tr>
