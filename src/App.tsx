@@ -22,7 +22,7 @@ function App() {
   // WebSocket bağlantısı ve otomatik yeniden bağlanma
   const connectWebSocket = () => {
     try {
-      const ws = io(`http://localhost:5000`, {
+      const ws = io(`http://${window.location.hostname}:5000`, {
         transports: ['websocket'],
         autoConnect: true,
         reconnection: true,
