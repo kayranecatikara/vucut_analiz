@@ -42,8 +42,14 @@ log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet',
-                   ping_timeout=120, ping_interval=30, logger=False, engineio_logger=False)
+socketio = SocketIO(app, 
+                   cors_allowed_origins="*", 
+                   async_mode='eventlet',
+                   ping_timeout=60,
+                   ping_interval=25,
+                   logger=False, 
+                   engineio_logger=False,
+                   transports=['websocket', 'polling'])
 
 # --- Global Variables ---
 test_running = False
