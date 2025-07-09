@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Test Tabanlı Vücut Analizi Sistemi
+Test Tabanlı Vücut Analizi Sistemi - Düzeltilmiş Versiyon
 - Teste başla butonuna basıldıktan sonra 10 saniye analiz
 - Analiz sonunda kamera kapanır
 - Vücut tipine göre diyet önerileri
+- Sol ekranda ölçüm verileri gözükür
+- Sağ tarafta detaylı sonuçlar
 """
 
 import eventlet
@@ -55,6 +57,15 @@ ANALYSIS_INTERVAL = 0.5  # Yarım saniyede bir analiz
 
 # Analiz verileri toplama
 analysis_results = []
+current_analysis = {
+    'omuz_genisligi': 0.0,
+    'bel_genisligi': 0.0,
+    'omuz_bel_orani': 0.0,
+    'vucut_tipi': 'Analiz Bekleniyor',
+    'mesafe': 0.0,
+    'confidence': 0.0
+}
+
 final_analysis = {
     'omuz_genisligi': 0.0,
     'bel_genisligi': 0.0,
@@ -64,6 +75,49 @@ final_analysis = {
     'confidence': 0.0,
     'diyet_onerileri': []
 }
+
+# --- Model Loading ---
+print("🤖 Loading MoveNet model from TensorFlow Hub...")
+model = None
+movenet = None
+
+def load_movenet_model():
+    """Load MoveNet model with retry mechanism"""
+    global model, movenet
+    
+    max_retries = 3
+    retry_delay = 5
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"📥 Model yükleme denemesi {attempt + 1}/{max_retries}...")
+            
+            # Timeout ile model yükleme
+            import socket
+            socket.setdefaulttimeout(30)  # 30 saniye timeout
+            
+            model = hub.load("https://tfhub.dev/google/movenet/singlepose/lightning/4")
+            movenet = model.signatures['serving_default']
+            print("✅ MoveNet model loaded successfully.")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Deneme {attempt + 1} başarısız: {e}")
+            if attempt < max_retries - 1:
+                print(f"⏳ {retry_delay} saniye bekleyip tekrar denenecek...")
+                time.sleep(retry_delay)
+            else:
+                print("❌ Model yüklenemedi. Lütfen internet bağlantınızı kontrol edin.")
+                return False
+    
+    return False
+
+# Model yüklemeyi dene
+if not load_movenet_model():
+    print("🛑 Sistem model olmadan çalışamaz. Çıkılıyor...")
+    exit(1)
+
+INPUT_SIZE = 192
 
 # --- Diyet Önerileri Veritabanı ---
 DIYET_ONERILERI = {
@@ -178,18 +232,6 @@ DIYET_ONERILERI = {
     }
 }
 
-# --- Model Loading ---
-print("🤖 Loading MoveNet model from TensorFlow Hub...")
-try:
-    model = hub.load("https://tfhub.dev/google/movenet/singlepose/lightning/4")
-    movenet = model.signatures['serving_default']
-    print("✅ MoveNet model loaded successfully.")
-except Exception as e:
-    print(f"❌ Failed to load MoveNet model: {e}")
-    exit()
-
-INPUT_SIZE = 192
-
 # --- Body Parts and Skeleton Definitions ---
 KEYPOINT_DICT = {
     'nose': 0, 'left_eye': 1, 'right_eye': 2, 'left_ear': 3, 'right_ear': 4,
@@ -205,10 +247,19 @@ EDGES = [
 
 def run_movenet(input_image: np.ndarray) -> np.ndarray:
     """Run MoveNet model on input image and return keypoints"""
+    if movenet is None:
+        print("❌ Model yüklenmemiş!")
+        return np.zeros((17, 3))
+        
     img_resized = tf.image.resize_with_pad(np.expand_dims(input_image, axis=0), INPUT_SIZE, INPUT_SIZE)
     input_tensor = tf.cast(img_resized, dtype=tf.int32)
-    outputs = movenet(input_tensor)
-    return outputs['output_0'].numpy()[0, 0]
+    
+    try:
+        outputs = movenet(input_tensor)
+        return outputs['output_0'].numpy()[0, 0]
+    except Exception as e:
+        print(f"❌ Model çalıştırma hatası: {e}")
+        return np.zeros((17, 3))
 
 def calculate_pixel_distance(p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
     """Calculate pixel distance between two points"""
@@ -254,6 +305,8 @@ def calculate_3d_distance_safe(p1: Tuple[int, int], p2: Tuple[int, int],
 def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int], 
                             depth_frame=None, depth_intrinsics=None) -> Dict[str, Any]:
     """Comprehensive body measurement analysis"""
+    global current_analysis
+    
     height, width = frame_shape[:2]
     
     analysis_data = {
@@ -275,6 +328,8 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
         lh_y, lh_x, lh_c = keypoints[KEYPOINT_DICT['left_hip']]
         rh_y, rh_x, rh_c = keypoints[KEYPOINT_DICT['right_hip']]
         
+        print(f"🔍 Keypoint confidence - LS: {ls_c:.2f}, RS: {rs_c:.2f}, LH: {lh_c:.2f}, RH: {rh_c:.2f}")
+        
         # Calculate shoulder width
         shoulder_width = 0.0
         if ls_c > 0.3 and rs_c > 0.3:
@@ -284,11 +339,13 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             if depth_frame is not None and depth_intrinsics is not None:
                 # RealSense 3D measurement
                 shoulder_width = calculate_3d_distance_safe(p1, p2, depth_frame, depth_intrinsics)
+                print(f"📏 3D Omuz genişliği: {shoulder_width}")
             else:
                 # Webcam pixel-based measurement
                 pixel_distance = calculate_pixel_distance(p1, p2)
                 shoulder_width = (pixel_distance / width) * 90
                 shoulder_width = max(25, min(75, shoulder_width))
+                print(f"📏 2D Omuz genişliği: {shoulder_width}")
             
             if shoulder_width:
                 analysis_data['omuz_genisligi'] = shoulder_width
@@ -302,16 +359,18 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             if depth_frame is not None and depth_intrinsics is not None:
                 # RealSense 3D measurement
                 waist_width = calculate_3d_distance_safe(p1, p2, depth_frame, depth_intrinsics)
+                print(f"📏 3D Bel genişliği: {waist_width}")
             else:
                 # Webcam pixel-based measurement
                 pixel_distance = calculate_pixel_distance(p1, p2)
                 waist_width = (pixel_distance / width) * 70
                 waist_width = max(20, min(55, waist_width))
+                print(f"📏 2D Bel genişliği: {waist_width}")
             
             if waist_width:
                 analysis_data['bel_genisligi'] = waist_width
         
-        # Calculate ratios and body type
+        # Calculate ratios and body type - HER ZAMAN HESAPLA
         if analysis_data['omuz_genisligi'] > 0 and analysis_data['bel_genisligi'] > 0:
             ratio = analysis_data['omuz_genisligi'] / analysis_data['bel_genisligi']
             analysis_data['omuz_bel_orani'] = ratio
@@ -327,6 +386,8 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             # Confidence calculation
             confidence = (ls_c + rs_c + lh_c + rh_c) / 4
             analysis_data['confidence'] = min(1.0, confidence)
+            
+            print(f"🎯 Vücut tipi: {analysis_data['vucut_tipi']} (Oran: {ratio:.2f}, Güven: {confidence:.2f})")
         
         # Calculate distance to person
         if depth_frame is not None:
@@ -339,11 +400,16 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
                     distance = safe_array_access(depth_image, center_y, center_x) * depth_frame.get_units()
                     if distance > 0:
                         analysis_data['mesafe'] = distance
+                        print(f"📐 Mesafe: {distance:.1f}m")
                 except Exception as e:
-                    pass
+                    print(f"Mesafe hesaplama hatası: {e}")
         else:
             # Fixed distance for webcam
             analysis_data['mesafe'] = 1.5
+        
+        # Update current analysis
+        current_analysis = analysis_data
+        print(f"✅ Anlık analiz güncellendi: {analysis_data}")
         
     except Exception as e:
         print(f"❌ Analiz hatası: {e}")
@@ -399,7 +465,7 @@ def draw_pose_and_measurements(frame: np.ndarray, keypoints: np.ndarray,
     height, width, _ = frame.shape
     
     try:
-        # Draw skeleton
+        # Draw skeleton - HER ZAMAN ÇİZ
         for p1_idx, p2_idx in EDGES:
             if p1_idx < len(keypoints) and p2_idx < len(keypoints):
                 y1, x1, c1 = keypoints[p1_idx]
@@ -409,7 +475,7 @@ def draw_pose_and_measurements(frame: np.ndarray, keypoints: np.ndarray,
                     pt2 = (int(x2 * width), int(y2 * height))
                     cv2.line(frame, pt1, pt2, (0, 255, 0), 2)
         
-        # Draw keypoints
+        # Draw keypoints - HER ZAMAN ÇİZ
         for i, (y, x, c) in enumerate(keypoints):
             if c > 0.3:
                 pt = (int(x * width), int(y * height))
@@ -421,29 +487,58 @@ def draw_pose_and_measurements(frame: np.ndarray, keypoints: np.ndarray,
         lh_y, lh_x, lh_c = keypoints[KEYPOINT_DICT['left_hip']]
         rh_y, rh_x, rh_c = keypoints[KEYPOINT_DICT['right_hip']]
         
-        # Shoulder measurement line
+        # Shoulder measurement line - DAIMA ÇİZ (confidence yeterli ise)
         if ls_c > 0.3 and rs_c > 0.3:
             pt1 = (int(ls_x * width), int(ls_y * height))
             pt2 = (int(rs_x * width), int(rs_y * height))
+            
+            # MOR ÇİZGİ - HER ZAMAN GÖRÜNÜR OLSUN
             cv2.line(frame, pt1, pt2, (255, 0, 255), 4)  # Kalın mor çizgi
             
-            if analysis_data['omuz_genisligi'] > 0:
+            # Measurement text
+            if analysis_data.get('omuz_genisligi', 0) > 0:
                 mid_x = int((pt1[0] + pt2[0]) / 2)
                 mid_y = int((pt1[1] + pt2[1]) / 2) - 15
                 cv2.putText(frame, f"{analysis_data['omuz_genisligi']:.1f}cm", 
                            (mid_x - 40, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
         
-        # Hip measurement line
+        # Hip measurement line - DAIMA ÇİZ (confidence yeterli ise)
         if lh_c > 0.3 and rh_c > 0.3:
             pt1 = (int(lh_x * width), int(lh_y * height))
             pt2 = (int(rh_x * width), int(rh_y * height))
+            
+            # MAVİ ÇİZGİ - HER ZAMAN GÖRÜNÜR OLSUN
             cv2.line(frame, pt1, pt2, (255, 255, 0), 4)  # Kalın cyan çizgi
             
-            if analysis_data['bel_genisligi'] > 0:
+            # Measurement text
+            if analysis_data.get('bel_genisligi', 0) > 0:
                 mid_x = int((pt1[0] + pt2[0]) / 2)
                 mid_y = int((pt1[1] + pt2[1]) / 2) + 25
                 cv2.putText(frame, f"{analysis_data['bel_genisligi']:.1f}cm", 
                            (mid_x - 40, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+        
+        # Add measurement text overlay - BÜYÜK VE NET
+        y_offset = 30
+        cv2.putText(frame, f"Omuz: {analysis_data.get('omuz_genisligi', 0):.1f}cm", 
+                   (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        
+        y_offset += 35
+        cv2.putText(frame, f"Bel: {analysis_data.get('bel_genisligi', 0):.1f}cm", 
+                   (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        
+        y_offset += 35
+        cv2.putText(frame, f"Tip: {analysis_data.get('vucut_tipi', 'Analiz Bekleniyor')}", 
+                   (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        
+        if analysis_data.get('omuz_bel_orani', 0) > 0:
+            y_offset += 35
+            cv2.putText(frame, f"Oran: {analysis_data['omuz_bel_orani']:.2f}", 
+                       (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        
+        if analysis_data.get('mesafe', 0) > 0:
+            y_offset += 35
+            cv2.putText(frame, f"Mesafe: {analysis_data['mesafe']:.1f}m", 
+                       (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         
         # Test countdown
         cv2.putText(frame, f"Test Suresi: {test_time_left}s", 
@@ -609,7 +704,7 @@ def run_realsense_test():
                 
                 # Draw pose and measurements
                 rgb_frame = draw_pose_and_measurements(color_image.copy(), keypoints, 
-                                                     analysis_results[-1] if analysis_results else {}, time_left)
+                                                     current_analysis, time_left)
                 
                 # Create depth visualization
                 depth_viz = create_depth_visualization(color_image, keypoints, depth_frame)
@@ -714,7 +809,7 @@ def run_webcam_test():
                 
                 # Draw pose and measurements
                 rgb_frame = draw_pose_and_measurements(frame.copy(), keypoints, 
-                                                     analysis_results[-1] if analysis_results else {}, time_left)
+                                                     current_analysis, time_left)
                 
                 # Create depth simulation
                 depth_viz = create_depth_visualization(frame, keypoints, None)
@@ -790,6 +885,8 @@ if __name__ == '__main__':
     print("   - 10 saniye test süresi")
     print("   - Otomatik kamera algılama")
     print("   - Vücut tipi analizi")
+    print("   - Sol ekranda ölçüm verileri")
+    print("   - Sağ tarafta detaylı sonuçlar")
     print("   - Kişiselleştirilmiş diyet önerileri")
     print("   - Test sonunda kamera kapanır")
     print()
