@@ -1175,6 +1175,7 @@ if __name__ == '__main__':
     print("   - Test sonunda kamera kapanır")
     print("   - Gelişmiş omuz algılama")
     print("   - Kararlı WebSocket bağlantısı")
+    print("   - Otomatik bağlantı koruma")
     print()
     
     if REALSENSE_AVAILABLE:
@@ -1185,7 +1186,8 @@ if __name__ == '__main__':
     print()
     try:
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, 
-                    use_reloader=False, log_output=False, allow_unsafe_werkzeug=True)
+                    use_reloader=False, log_output=False, allow_unsafe_werkzeug=True,
+                    engineio_logger=False, socketio_logger=False)
     except KeyboardInterrupt:
         print("\n🛑 Sistem kapatılıyor...")
         test_running = False

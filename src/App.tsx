@@ -53,6 +53,16 @@ function App() {
         // Pong alındı, bağlantı sağlıklı
       });
 
+      ws.on('heartbeat', (data) => {
+        // Server'dan heartbeat alındı, bağlantı sağlıklı
+        console.log('💓 Heartbeat alındı');
+      });
+
+      ws.on('connection_ok', (data) => {
+        // Bağlantı durumu onaylandı
+        console.log('✅ Bağlantı durumu: OK');
+      });
+
       ws.on('test_frame', (data) => {
         updateVideoFrame(data.frame);
         setTestStatus(prev => ({
@@ -79,6 +89,10 @@ function App() {
         setTestResults(data);
         
         // Test tamamlandıktan sonra bağlantıyı koru
+        setTimeout(() => {
+          ws.emit('check_connection');
+        }, 2000);
+        
         setConnectionStatus({
           connected: true,
           message: 'Test tamamlandı - Hazır',
