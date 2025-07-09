@@ -24,7 +24,12 @@ function App() {
     try {
       const ws = io(`http://localhost:5000`, {
         transports: ['websocket'],
-        autoConnect: true
+        autoConnect: true,
+        reconnection: true,
+        reconnectionDelay: 2000,
+        reconnectionAttempts: 10,
+        timeout: 20000,
+        forceNew: false
       });
       
       ws.on('connect', () => {
@@ -35,6 +40,17 @@ function App() {
           timestamp: Date.now()
         });
         setSocket(ws);
+      });
+
+      // Heartbeat sistemi
+      const heartbeat = setInterval(() => {
+        if (ws.connected) {
+          ws.emit('ping', { timestamp: Date.now() });
+        }
+      }, 30000); // 30 saniyede bir ping gönder
+
+      ws.on('pong', (data) => {
+        // Pong alındı, bağlantı sağlıklı
       });
 
       ws.on('test_frame', (data) => {
@@ -61,6 +77,14 @@ function App() {
           completed: true
         });
         setTestResults(data);
+        
+        // Test tamamlandıktan sonra bağlantıyı koru
+        setConnectionStatus({
+          connected: true,
+          message: 'Test tamamlandı - Hazır',
+          timestamp: Date.now()
+        });
+        
         console.log('Test tamamlandı:', data);
       });
 
@@ -88,6 +112,7 @@ function App() {
 
       ws.on('disconnect', () => {
         console.log('❌ WebSocket bağlantısı kesildi');
+        clearInterval(heartbeat);
         setConnectionStatus({
           connected: false,
           message: 'Bağlantı kesildi - Yeniden bağlanıyor...',
@@ -100,10 +125,34 @@ function App() {
           completed: false
         });
         
-        // 3 saniye sonra otomatik yeniden bağlan
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectWebSocket();
-        }, 3000);
+        // Otomatik yeniden bağlanma socket.io tarafından yapılacak
+      });
+
+      ws.on('reconnect', (attemptNumber) => {
+        console.log(`✅ Yeniden bağlandı (deneme ${attemptNumber})`);
+        setConnectionStatus({
+          connected: true,
+          message: 'Yeniden bağlandı',
+          timestamp: Date.now()
+        });
+      });
+
+      ws.on('reconnect_attempt', (attemptNumber) => {
+        console.log(`🔄 Yeniden bağlanma denemesi ${attemptNumber}`);
+        setConnectionStatus({
+          connected: false,
+          message: `Yeniden bağlanıyor... (${attemptNumber})`,
+          timestamp: Date.now()
+        });
+      });
+
+      ws.on('reconnect_failed', () => {
+        console.log('❌ Yeniden bağlanma başarısız');
+        setConnectionStatus({
+          connected: false,
+          message: 'Bağlantı başarısız - Sunucuyu kontrol edin',
+          timestamp: Date.now()
+        });
       });
 
       ws.on('error', (error) => {
@@ -138,14 +187,16 @@ function App() {
   };
 
   const startTest = () => {
-    if (connectionStatus.connected && !testStatus.running) {
+    if (connectionStatus.connected && !testStatus.running && socket) {
       sendWebSocketMessage('start_test');
+      console.log('Test başlatma komutu gönderildi');
     }
   };
 
   const stopTest = () => {
-    if (connectionStatus.connected && testStatus.running) {
+    if (connectionStatus.connected && testStatus.running && socket) {
       sendWebSocketMessage('stop_test');
+      console.log('Test durdurma komutu gönderildi');
     }
   };
 
