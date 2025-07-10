@@ -1520,6 +1520,39 @@ def run_webcam_test():
                 failed_frame_count = 0
                 frame = cv2.flip(frame, 1)
                 
+                # 4. kamera için güçlü parlaklık filtreleri
+                # 1. Kontrast ve parlaklık artırma (daha güçlü)
+                alpha = 1.5  # Kontrast çarpanı (1.0 = normal, 1.5 = %50 artış)
+                beta = 50    # Parlaklık ekleme (0-100 arası, 50 = orta-yüksek)
+                frame = cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
+                
+                # 2. Gamma düzeltmesi (karanlık alanları aydınlatır)
+                gamma = 1.2  # 1.0'dan büyük değerler aydınlatır
+                inv_gamma = 1.0 / gamma
+                table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+                frame = cv2.LUT(frame, table)
+                
+                # 3. CLAHE (Contrast Limited Adaptive Histogram Equalization)
+                # LAB renk uzayında parlaklık kanalını iyileştir
+                lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                
+                # CLAHE uygula (daha güçlü ayarlar)
+                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+                l = clahe.apply(l)
+                
+                # Parlaklık kanalını biraz daha artır
+                l = cv2.add(l, 20)  # +20 parlaklık ekle
+                l = np.clip(l, 0, 255)  # 0-255 arasında tut
+                
+                # LAB'ı tekrar birleştir ve BGR'ye çevir
+                lab = cv2.merge([l, a, b])
+                frame = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+                
+                # 4. Son dokunuş: Hafif bulanıklaştırma ve keskinleştirme
+                # Gürültüyü azalt
+                frame = cv2.bilateralFilter(frame, 9, 75, 75)
+                
                 # Parlaklık ve kontrast filtreleri uygula
                 frame = cv2.convertScaleAbs(frame, alpha=1.3, beta=30)
                 
