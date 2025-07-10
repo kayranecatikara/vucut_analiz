@@ -1510,6 +1510,23 @@ def run_webcam_test():
                 failed_frame_count = 0
                 frame = cv2.flip(frame, 1)
                 
+                # Görüntü iyileştirme filtreleri
+                # 1. Parlaklık ve kontrast ayarı
+                frame = cv2.convertScaleAbs(frame, alpha=1.3, beta=30)  # alpha=kontrast, beta=parlaklık
+                
+                # 2. Histogram eşitleme (daha iyi aydınlatma)
+                lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                l = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(l)
+                frame = cv2.merge([l, a, b])
+                frame = cv2.cvtColor(frame, cv2.COLOR_LAB2BGR)
+                
+                # 3. Gamma düzeltmesi (daha parlak görüntü)
+                gamma = 1.2
+                inv_gamma = 1.0 / gamma
+                table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+                frame = cv2.LUT(frame, table)
+                
                 # Run pose detection
                 keypoints = run_movenet(frame)
                 
