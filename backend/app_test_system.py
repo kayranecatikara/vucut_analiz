@@ -280,7 +280,7 @@ def take_food_photo_realsense():
             color_image = np.asanyarray(color_frame.get_data())
             color_image = cv2.flip(color_image, 1)  # Aynala
             
-            # SADECE RGB görüntüyü al ve aynala
+            # JPEG olarak encode et
             _, buffer = cv2.imencode('.jpg', color_image, [cv2.IMWRITE_JPEG_QUALITY, 95])
             img_base64 = base64.b64encode(buffer).decode('utf-8')
             
@@ -315,20 +315,16 @@ def process_food_photo():
         # Fotoğraf çekme başladı
         safe_emit('food_capture_started')
         socketio.sleep(0.5)
-            # Temiz RGB fotoğraf - hiç işlem yapma
-            food_photo = color_image.copy()
-            
         
         # Frame yakala
         captured_frame = capture_single_frame()
         
         if captured_frame is None:
             safe_emit('food_analysis_error', {'message': 'Fotoğraf çekilemedi'})
-            # Temiz RGB fotoğraf - hiç işlem yapma
-            food_photo = cv2.flip(frame, 1)  # Sadece aynala
+            return
         
-        # TEMİZ RGB fotoğrafı encode et
-        _, buffer = cv2.imencode('.jpg', food_photo, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        # RGB fotoğrafı base64'e çevir (JPEG formatında)
+        _, buffer = cv2.imencode('.jpg', captured_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
         img_base64 = base64.b64encode(buffer).decode('utf-8')
         
         # Analiz başladı
@@ -336,7 +332,7 @@ def process_food_photo():
         socketio.sleep(1)  # Analiz simülasyonu
         
         # Yemek tespiti yap (şimdilik simülasyon)
-        # Yemek analizi (şimdilik sahte veri)
+        food_analysis = simulate_food_detection(img_base64)
         
         # Sonuçları gönder
         safe_emit('food_analysis_result', {
