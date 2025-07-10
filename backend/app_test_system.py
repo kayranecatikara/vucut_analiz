@@ -2146,6 +2146,54 @@ def run_webcam_test():
 
 def take_food_photo():
     """Yemek fotoğrafı çek ve analiz et"""
+    global camera, realsense_pipeline, camera_mode
+    
+    try:
+        if not food_analyzer:
+            socketio.emit('food_analysis_error', {'message': 'Food analyzer başlatılamadı'})
+            return
+        
+        # Kamera tipini belirle
+        if not detect_camera_type():
+            socketio.emit('food_analysis_error', {'message': 'Kamera bulunamadı'})
+            return
+        
+        # Geri sayım
+        for i in range(FOOD_PHOTO_COUNTDOWN, 0, -1):
+            socketio.emit('food_capture_countdown', {'count': i})
+            time.sleep(1)
+        
+        socketio.emit('food_capture_started')
+        
+        # Fotoğraf çek
+        image_data = None
+        
+        if camera_mode == "realsense":
+            image_data = capture_realsense_photo()
+        else:
+            image_data = capture_webcam_photo()
+        
+        if image_data:
+            socketio.emit('food_analysis_started')
+            
+            # Yemek analizi yap
+            analysis_result = food_analyzer.analyze_food_image(image_data)
+            
+            # Sonucu gönder
+            socketio.emit('food_analysis_result', {
+                'image': analysis_result['image'],
+                'analysis': analysis_result
+            })
+            
+            print(f"✅ Yemek analizi tamamlandı: {analysis_result['total_calories']} kalori")
+        else:
+            socketio.emit('food_analysis_error', {'message': 'Fotoğraf çekilemedi'})
+            
+    except Exception as e:
+        print(f"❌ Yemek fotoğrafı hatası: {e}")
+        socketio.emit('food_analysis_error', {'message': f'Hata: {str(e)}'})
+def take_food_photo():
+    """Yemek fotoğrafı çek ve analiz et"""
     global camera, realsense_pipeline, camera_mode, food_capture_active
     
     food_capture_active = True
@@ -2514,19 +2562,34 @@ def handle_start_test(data):
 @socketio.on('stop_test')
 def handle_stop_test(data):
     global test_running
+    global food_capture_active
     try:
         test_running = False
         safe_emit('test_stopped')
-        print("🛑 Test durduruldu")
-    except Exception as e:
-        print(f"❌ Test durdurma hatası: {e}")
-
 @socketio.on('take_food_photo')
 def handle_take_food_photo(data):
     """Yemek fotoğrafı çekme isteği"""
     if not test_running:  # Test çalışmıyorsa fotoğraf çekebilir
         socketio.start_background_task(target=take_food_photo)
         print("📸 Yemek fotoğrafı çekiliyor")
+        print("🛑 Test durduruldu")
+    except Exception as e:
+        print(f"❌ Test durdurma hatası: {e}")
+
+@socketio.on('take_food_photo')
+def handle_take_food_photo(data=None):
+    """Yemek fotoğrafı çekme isteği"""
+    global calorie_calculation_active
+    
+    try:
+        if not calorie_calculation_active and not test_running:
+            print("📸 Kalori hesaplama için fotoğraf çekiliyor...")
+            socketio.start_background_task(target=process_food_photo)
+        else:
+            safe_emit('food_analysis_error', {'message': 'Başka bir işlem devam ediyor'})
+    except Exception as e:
+        print(f"❌ Fotoğraf çekme hatası: {e}")
+        safe_emit('food_analysis_error', {'message': f'Fotoğraf çekme hatası: {str(e)}'})
 
 # Heartbeat sistemi
 @socketio.on('ping')
@@ -2544,19 +2607,28 @@ def handle_check_connection():
     except Exception as e:
         print(f"❌ Connection check hatası: {e}")
 
-def initialize_food_analyzer():
-    """Food analyzer'ı başlat"""
-    global food_analyzer
-    try:
-        api_key = "920c5f81c0264c2ca92a1d916e604a7694c560e9"
-        food_analyzer = FoodAnalyzer(api_key)
-        print("✅ Food analyzer başlatıldı")
-        return True
-    except Exception as e:
-        print(f"❌ Food analyzer başlatılamadı: {e}")
-        return False
+@socketio.on('take_food_photo')
+def handle_take_food_photo(data):
+    global food_capture_active, food_capture_thread
+    if not food_capture_active and not test_running:
+        food_capture_thread = socketio.start_background_task(target=capture_food_photo)
+        print("📸 Yemek fotoğrafı çekme başlatıldı")
+
+@socketio.on('take_food_photo')
+def handle_take_food_photo(data):
+    """Yemek fotoğrafı çekme isteği"""
+    global food_capture_thread, food_capture_active
+    
+    if not test_running and not food_capture_active:  # Test çalışmıyorsa ve fotoğraf çekilmiyorsa
+        food_capture_thread = socketio.start_background_task(target=take_food_photo)
+        print("📸 Yemek fotoğrafı çekiliyor")
+    else:
+        socketio.emit('food_analysis_error', {'message': 'Test çalışırken fotoğraf çekilemez'})
 
 if __name__ == '__main__':
+    # Food analyzer'ı başlat
+    initialize_food_analyzer()
+    
     # Food analyzer'ı başlat
     initialize_food_analyzer()
     
