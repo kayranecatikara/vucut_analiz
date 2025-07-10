@@ -411,8 +411,9 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             else:
                 # Webcam pixel-based measurement
                 pixel_distance = calculate_pixel_distance(p1, p2)
-                shoulder_width = (pixel_distance / width) * 90
-                shoulder_width = max(25, min(75, shoulder_width))
+                # Daha gerçekçi omuz genişliği hesaplama
+                shoulder_width = (pixel_distance / width) * 120  # Daha geniş ölçek
+                shoulder_width = max(35, min(65, shoulder_width))  # 35-65cm arası
             
             if shoulder_width:
                 analysis_data['omuz_genisligi'] = shoulder_width
@@ -429,11 +430,19 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             else:
                 # Webcam pixel-based measurement
                 pixel_distance = calculate_pixel_distance(p1, p2)
-                waist_width = (pixel_distance / width) * 70
-                waist_width = max(20, min(55, waist_width))
+                # Daha gerçekçi bel genişliği hesaplama (omuzdan dar olmalı)
+                waist_width = (pixel_distance / width) * 85   # Omuzdan biraz dar
+                waist_width = max(25, min(45, waist_width))   # 25-45cm arası
             
             if waist_width:
                 analysis_data['bel_genisligi'] = waist_width
+        
+        # ÖNEMLI: Omuz her zaman belden geniş olmalı
+        if analysis_data['omuz_genisligi'] > 0 and analysis_data['bel_genisligi'] > 0:
+            if analysis_data['omuz_genisligi'] <= analysis_data['bel_genisligi']:
+                # Eğer omuz belden küçük/eşitse, düzelt
+                analysis_data['omuz_genisligi'] = analysis_data['bel_genisligi'] * 1.3  # %30 daha geniş yap
+                print(f"⚠️ Omuz genişliği düzeltildi: {analysis_data['omuz_genisligi']:.1f}cm")
         
         # Calculate ratios and body type
         if analysis_data['omuz_genisligi'] > 0 and analysis_data['bel_genisligi'] > 0:
