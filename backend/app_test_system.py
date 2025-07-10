@@ -1455,7 +1455,7 @@ def run_webcam_test():
     global test_running, camera, analysis_results
     
     try:
-        working_cameras = [4, 2, 0, 1, 6]  # 4 ve 2'yi öncelikle dene
+        working_cameras = [6, 2, 0, 1, 4]  # 4 ve 2'yi öncelikle dene
         working_camera_index = None
         
         for camera_index in working_cameras:
