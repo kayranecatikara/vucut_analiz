@@ -90,16 +90,11 @@ print("🤖 Loading MoveNet model from TensorFlow Hub...")
 model = None
 movenet = None
 
-# Basit model yükleme - hata varsa devam et
-try:
-    print("📂 Model yükleniyor...")
-    model = hub.load("https://tfhub.dev/google/movenet/singlepose/lightning/4")
-    movenet = model.signatures['serving_default']
-    print("✅ MoveNet model loaded successfully.")
-except Exception as e:
-    print(f"⚠️ Model yüklenemedi, basit pose detection kullanılacak: {e}")
-    model = None
-    movenet = None
+# Model zaten yüklü, direkt kullan
+print("✅ Model hazır, yükleme atlanıyor")
+model = hub.load("https://tfhub.dev/google/movenet/singlepose/lightning/4")
+movenet = model.signatures['serving_default']
+print("✅ MoveNet model ready.")
 
 INPUT_SIZE = 192
 
