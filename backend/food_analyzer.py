@@ -175,6 +175,8 @@ class FoodAnalyzer:
             total_calories = 0
             confidence_scores = []
             
+            print(f"🔍 LogMeal API sonucu: {api_result}")
+            
             # LogMeal API sonuçlarını kontrol et
             if 'segmentation_results' in api_result:
                 segmentation_results = api_result['segmentation_results']
@@ -186,6 +188,8 @@ class FoodAnalyzer:
                         for food_item in recognition_results:
                             food_name = food_item.get('name', '').lower()
                             confidence = food_item.get('prob', 0)
+                            
+                            print(f"🍽️ Tespit edilen: {food_name} (güven: {confidence})")
                             
                             if confidence > 0.3:  # %30'dan yüksek güvenilirlik
                                 # Kalori hesapla
@@ -200,11 +204,33 @@ class FoodAnalyzer:
                                 total_calories += calories
                                 confidence_scores.append(confidence)
             
+            # Alternatif API yapısını kontrol et
+            elif 'foodFamily' in api_result or 'food_family' in api_result:
+                food_family = api_result.get('foodFamily') or api_result.get('food_family', [])
+                for food_item in food_family:
+                    food_name = food_item.get('name', '').lower()
+                    confidence = food_item.get('confidence', 0.5)
+                    
+                    print(f"🍽️ Food family tespit: {food_name} (güven: {confidence})")
+                    
+                    if confidence > 0.3:
+                        calories = self._calculate_calories(food_name)
+                        detected_foods.append({
+                            'name': self._translate_food_name(food_name),
+                            'confidence': confidence,
+                            'calories': calories
+                        })
+                        total_calories += calories
+                        confidence_scores.append(confidence)
+            
             # Eğer hiç yemek tespit edilmediyse akıllı varsayılan
             if not detected_foods:
+                print("⚠️ Hiç yemek tespit edilemedi, fallback kullanılıyor")
                 return self._create_smart_fallback_result(image_base64)
             
             avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.5
+            
+            print(f"✅ Toplam {len(detected_foods)} yemek tespit edildi, toplam kalori: {total_calories}")
             
             return {
                 'success': True,
@@ -224,14 +250,20 @@ class FoodAnalyzer:
         """
         Yemek adına göre kalori hesapla (ortalama porsiyon için)
         """
+        print(f"🔢 Kalori hesaplanıyor: {food_name}")
+        
         # Önce tam eşleşme ara
         if food_name in self.food_calories:
-            return int(self.food_calories[food_name] * 1.5)  # Ortalama porsiyon (150g)
+            calories = int(self.food_calories[food_name] * 1.5)  # Ortalama porsiyon (150g)
+            print(f"✅ Tam eşleşme bulundu: {calories} kalori")
+            return calories
         
         # Kısmi eşleşme ara
         for key, calories in self.food_calories.items():
             if key in food_name or food_name in key:
-                return int(calories * 1.5)
+                result_calories = int(calories * 1.5)
+                print(f"✅ Kısmi eşleşme bulundu ({key}): {result_calories} kalori")
+                return result_calories
         
         # İngilizce-Türkçe eşleştirme
         english_turkish = {
@@ -258,22 +290,31 @@ class FoodAnalyzer:
         
         for eng, tur in english_turkish.items():
             if eng in food_name and tur in self.food_calories:
-                return int(self.food_calories[tur] * 1.5)
+                result_calories = int(self.food_calories[tur] * 1.5)
+                print(f"✅ İngilizce eşleşme bulundu ({eng}->{tur}): {result_calories} kalori")
+                return result_calories
         
         # Yemek kategorisine göre varsayılan değerler
         if any(word in food_name for word in ['meat', 'beef', 'chicken', 'et', 'tavuk', 'kebap']):
+            print(f"🥩 Et kategorisi tespit edildi: 300 kalori")
             return 300  # Et yemekleri
         elif any(word in food_name for word in ['bread', 'rice', 'pasta', 'ekmek', 'pilav', 'makarna']):
+            print(f"🍞 Karbonhidrat kategorisi tespit edildi: 200 kalori")
             return 200  # Karbonhidrat
         elif any(word in food_name for word in ['vegetable', 'salad', 'sebze', 'salata']):
+            print(f"🥗 Sebze kategorisi tespit edildi: 50 kalori")
             return 50   # Sebze
         elif any(word in food_name for word in ['fruit', 'apple', 'banana', 'meyve']):
+            print(f"🍎 Meyve kategorisi tespit edildi: 80 kalori")
             return 80   # Meyve
         elif any(word in food_name for word in ['dessert', 'cake', 'chocolate', 'tatlı', 'baklava']):
+            print(f"🍰 Tatlı kategorisi tespit edildi: 400 kalori")
             return 400  # Tatlı
         elif any(word in food_name for word in ['drink', 'juice', 'içecek', 'suyu']):
+            print(f"🥤 İçecek kategorisi tespit edildi: 60 kalori")
             return 60   # İçecek
         else:
+            print(f"❓ Kategori bulunamadı, varsayılan: 150 kalori")
             return 150  # Genel varsayılan
     
     def _translate_food_name(self, food_name: str) -> str:
@@ -336,18 +377,46 @@ class FoodAnalyzer:
         """
         API başarısız olduğunda akıllı varsayılan sonuç oluştur
         """
-        # Çeşitli varsayılan yemekler
-        fallback_foods = [
-            {'name': 'Karışık Yemek', 'confidence': 0.4, 'calories': 250},
-            {'name': 'Ana Yemek', 'confidence': 0.3, 'calories': 300},
-            {'name': 'Sebze Yemeği', 'confidence': 0.3, 'calories': 150},
-            {'name': 'Et Yemeği', 'confidence': 0.3, 'calories': 350},
-            {'name': 'Pilav/Makarna', 'confidence': 0.3, 'calories': 200}
-        ]
-        
-        # Rastgele bir varsayılan seç
-        import random
-        selected_food = random.choice(fallback_foods)
+        # Basit görüntü analizi ile daha akıllı tahmin
+        try:
+            # Base64'ü decode et ve basit renk analizi yap
+            import base64
+            from PIL import Image
+            import io
+            
+            image_data = base64.b64decode(image_base64)
+            image = Image.open(io.BytesIO(image_data))
+            
+            # Görüntüyü küçült ve renk analizi yap
+            image = image.resize((100, 100))
+            pixels = list(image.getdata())
+            
+            # Ortalama renk hesapla
+            avg_r = sum(p[0] for p in pixels) / len(pixels)
+            avg_g = sum(p[1] for p in pixels) / len(pixels)
+            avg_b = sum(p[2] for p in pixels) / len(pixels)
+            
+            # Renk bazlı tahmin
+            if avg_r > 150 and avg_g < 100 and avg_b < 100:
+                # Kırmızı tonları - elma, domates, kırmızı biber
+                selected_food = {'name': 'Elma', 'confidence': 0.6, 'calories': 80}
+            elif avg_g > 120 and avg_r < 100:
+                # Yeşil tonları - sebze
+                selected_food = {'name': 'Yeşil Sebze', 'confidence': 0.5, 'calories': 50}
+            elif avg_r > 200 and avg_g > 150 and avg_b < 100:
+                # Sarı/turuncu tonları - muz, portakal
+                selected_food = {'name': 'Meyve', 'confidence': 0.5, 'calories': 70}
+            elif avg_r > 100 and avg_g > 80 and avg_b > 60:
+                # Kahverengi tonları - et, ekmek
+                selected_food = {'name': 'Ana Yemek', 'confidence': 0.4, 'calories': 250}
+            else:
+                # Varsayılan
+                selected_food = {'name': 'Bilinmeyen Yemek', 'confidence': 0.3, 'calories': 150}
+                
+        except Exception as e:
+            print(f"Renk analizi hatası: {e}")
+            # Hata durumunda güvenli varsayılan
+            selected_food = {'name': 'Bilinmeyen Yemek', 'confidence': 0.3, 'calories': 150}
         
         return {
             'success': False,
@@ -357,7 +426,7 @@ class FoodAnalyzer:
             'image': image_base64,
             'analysis_time': time.time(),
             'api_used': 'Fallback',
-            'note': 'API analizi başarısız, tahmini değer kullanıldı'
+            'note': 'API analizi başarısız, renk bazlı tahmin kullanıldı'
         }
 
 # Test fonksiyonu
