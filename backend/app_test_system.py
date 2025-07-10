@@ -1258,7 +1258,6 @@ def run_webcam_test():
             return
         
         camera = cv2.VideoCapture(working_camera_index)
-                food_image = np.asanyarray(color_frame.get_data())
         camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         camera.set(cv2.CAP_PROP_FPS, 30)
         print("✅ Webcam test başlatıldı")
