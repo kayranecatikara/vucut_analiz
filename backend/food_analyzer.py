@@ -166,7 +166,7 @@ class FoodAnalyzer:
                 f"{self.base_url}/image/segmentation/complete",
                 headers=self.headers,
                 json=data,
-                timeout=30
+                timeout=60
             )
             
             print(f"📡 API Yanıtı: {response.status_code}")
@@ -196,6 +196,9 @@ class FoodAnalyzer:
                 
         except Exception as e:
             print(f"❌ Yemek analizi hatası: {e}")
+            print("💡 İnternet bağlantınızı kontrol edin")
+            print("💡 VPN/Proxy kapalı olduğundan emin olun")
+            print("💡 DNS ayarlarını kontrol edin (8.8.8.8)")
             return self._create_smart_fallback_result(image_base64, None)
     
     def _analyze_image_locally(self, image_data: bytes) -> Dict[str, Any]:
