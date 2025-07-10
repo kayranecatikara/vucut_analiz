@@ -833,171 +833,22 @@ def handle_stop_test(data):
 @socketio.on('take_food_photo')
 def handle_take_food_photo(data):
     """Kalori analizi için RGB fotoğraf çek"""
-    global test_running
-    
-    if test_running:
-        socketio.emit('food_analysis_error', {'message': 'Test çalışırken fotoğraf çekilemez'})
-        return
-    
-    print("📸 Kalori analizi için fotoğraf çekiliyor...")
-    socketio.start_background_task(target=capture_food_photo)
+    # GEÇİCİ OLARAK DEVRE DIŞI
+    socketio.emit('food_analysis_error', {'message': 'Kalori hesaplama özelliği geçici olarak devre dışı'})
+    return
 
 def capture_food_photo():
     """RGB fotoğraf çekme işlemi"""
-    global camera_mode
-    
-    try:
-        # 3 saniye geri sayım
-        for i in range(3, 0, -1):
-            socketio.emit('food_capture_countdown', {'count': i})
-            socketio.sleep(1)
-        
-        socketio.emit('food_capture_started')
-        
-        # Kamera tipini belirle
-        if not detect_camera_type():
-            socketio.emit('food_analysis_error', {'message': 'Kamera bulunamadı'})
-            return
-        
-        if camera_mode == "realsense":
-            rgb_image = capture_realsense_photo()
-        else:
-            rgb_image = capture_webcam_photo()
-        
-        if rgb_image is None:
-            socketio.emit('food_analysis_error', {'message': 'Fotoğraf çekilemedi'})
-            return
-        
-        # Analiz başladı sinyali
-        socketio.emit('food_analysis_started')
-        socketio.sleep(2)  # Analiz simülasyonu
-        
-        # RGB görüntüyü base64'e çevir
-        _, buffer = cv2.imencode('.jpg', rgb_image, [cv2.IMWRITE_JPEG_QUALITY, 95])
-        img_base64 = base64.b64encode(buffer).decode('utf-8')
-        
-        # Dummy analiz sonuçları (gerçek AI modeli henüz entegre değil)
-        dummy_analysis = {
-            'total_calories': 320,
-            'detected_foods': [
-                {'name': 'Tavuk Göğsü (150g)', 'calories': 165},
-                {'name': 'Pirinç (1 porsiyon)', 'calories': 130},
-                {'name': 'Salata (1 porsiyon)', 'calories': 25}
-            ],
-            'confidence': 0.87
-        }
-        
-        # Sonuçları gönder
-        socketio.emit('food_analysis_result', {
-            'image': img_base64,
-            'analysis': dummy_analysis
-        })
-        
-        print("✅ Kalori analizi tamamlandı")
-        
-    except Exception as e:
-        print(f"❌ Fotoğraf çekme hatası: {e}")
-        socketio.emit('food_analysis_error', {'message': f'Fotoğraf çekme hatası: {str(e)}'})
+    # GEÇİCİ OLARAK DEVRE DIŞI
+    pass
 
 def capture_realsense_photo():
     """RealSense kameradan RGB fotoğraf çek"""
-    temp_pipeline = None
-    
-    try:
-        # RealSense pipeline başlat
-        temp_pipeline = rs.pipeline()
-        config = rs.config()
-        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-        
-        profile = temp_pipeline.start(config)
-        print("📹 RealSense kamera başlatıldı (fotoğraf için)")
-        
-        # Kameranın oturması için birkaç frame atla
-        for i in range(10):
-            frames = temp_pipeline.wait_for_frames(timeout_ms=1000)
-            color_frame = frames.get_color_frame()
-            if not color_frame:
-                continue
-        
-        # Son RGB frame'i al
-        frames = temp_pipeline.wait_for_frames(timeout_ms=1000)
-        color_frame = frames.get_color_frame()
-        
-        if not color_frame:
-            return None
-        
-        # RGB görüntüyü numpy array'e çevir
-        color_image = np.asanyarray(color_frame.get_data())
-        color_image = cv2.flip(color_image, 1)  # Ayna efekti
-        
-        print("✅ RealSense RGB fotoğraf çekildi")
-        return color_image
-        
-    except Exception as e:
-        print(f"❌ RealSense fotoğraf hatası: {e}")
-        return None
-    
-    finally:
-        if temp_pipeline:
-            temp_pipeline.stop()
-            print("🛑 RealSense kamera kapatıldı")
+    # GEÇİCİ OLARAK DEVRE DIŞI
+    return None
 
 def capture_webcam_photo():
     """Normal webcam'den RGB fotoğraf çek"""
-    temp_camera = None
-    
-    try:
-        # Çalışan kamera indexini bul
-        working_cameras = [0, 1, 2, 4, 6]
-        working_camera_index = None
-        
-        for camera_index in working_cameras:
-            test_cap = cv2.VideoCapture(camera_index)
-            if test_cap.isOpened():
-                ret, frame = test_cap.read()
-                if ret and frame is not None:
-                    working_camera_index = camera_index
-                    test_cap.release()
-                    print(f"✅ Webcam {camera_index} kullanılıyor (fotoğraf için)")
-                    break
-                test_cap.release()
-        
-        if working_camera_index is None:
-            print("❌ Webcam bulunamadı")
-            return None
-        
-        # Kamerayı aç
-        temp_camera = cv2.VideoCapture(working_camera_index)
-        temp_camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        temp_camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        temp_camera.set(cv2.CAP_PROP_FPS, 30)
-        
-        # Kameranın oturması için birkaç frame atla
-        for i in range(10):
-            ret, frame = temp_camera.read()
-            if not ret:
-                continue
-        
-        # Son RGB frame'i al
-        ret, frame = temp_camera.read()
-        
-        if not ret or frame is None:
-            return None
-        
-        # Ayna efekti uygula
-        frame = cv2.flip(frame, 1)
-        
-        print("✅ Webcam RGB fotoğraf çekildi")
-        return frame
-        
-    except Exception as e:
-        print(f"❌ Webcam fotoğraf hatası: {e}")
-        return None
-    
-    finally:
-        if temp_camera:
-            temp_camera.release()
-            print("🛑 Webcam kapatıldı")
 
 if __name__ == '__main__':
     print("🚀 Starting Test-Based Body Analysis System...")
