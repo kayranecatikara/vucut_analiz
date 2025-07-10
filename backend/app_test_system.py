@@ -19,6 +19,9 @@ import base64
 import time
 import logging
 import json
+import requests
+import io
+from PIL import Image
 from typing import Optional, Tuple, Dict, Any
 import threading
 import random
@@ -70,6 +73,68 @@ heartbeat_active = False
 TEST_DURATION = 10  # 10 saniye test süresi
 ANALYSIS_INTERVAL = 0.5  # Yarım saniyede bir analiz
 FOOD_CAPTURE_COUNTDOWN = 3  # 3 saniye geri sayım
+
+# API Konfigürasyonu
+CLARIFAI_API_KEY = "YOUR_CLARIFAI_API_KEY_HERE"  # Buraya API key'inizi yazın
+CLARIFAI_MODEL_ID = "food-item-recognition"
+CLARIFAI_USER_ID = "clarifai"
+CLARIFAI_APP_ID = "main"
+
+# Yemek kalori veritabanı (yaklaşık değerler)
+FOOD_CALORIES_DB = {
+    'pizza': 266,
+    'burger': 354,
+    'sandwich': 250,
+    'salad': 150,
+    'pasta': 220,
+    'rice': 130,
+    'chicken': 165,
+    'fish': 206,
+    'bread': 265,
+    'apple': 52,
+    'banana': 89,
+    'orange': 47,
+    'tomato': 18,
+    'potato': 77,
+    'egg': 155,
+    'cheese': 113,
+    'milk': 42,
+    'coffee': 2,
+    'tea': 1,
+    'water': 0,
+    'soup': 85,
+    'cake': 257,
+    'cookie': 502,
+    'chocolate': 546,
+    'ice cream': 207,
+    'yogurt': 59,
+    'meat': 250,
+    'vegetable': 25,
+    'fruit': 60,
+    'nuts': 607,
+    'beans': 347,
+    'corn': 86,
+    'carrot': 41,
+    'broccoli': 34,
+    'spinach': 23,
+    'lettuce': 15,
+    'cucumber': 16,
+    'onion': 40,
+    'garlic': 149,
+    'ginger': 80,
+    'lemon': 29,
+    'lime': 30,
+    'avocado': 160,
+    'strawberry': 32,
+    'grape': 62,
+    'watermelon': 30,
+    'pineapple': 50,
+    'mango': 60,
+    'kiwi': 61,
+    'peach': 39,
+    'pear': 57,
+    'plum': 46
+}
 
 # Analiz verileri toplama
 analysis_results = []
@@ -153,6 +218,141 @@ def load_movenet_model():
                 return False
     
     return False
+
+def analyze_food_with_clarifai(image_data):
+    """Clarifai API ile yemek analizi yap"""
+    try:
+        # API key kontrolü
+        if CLARIFAI_API_KEY == "YOUR_CLARIFAI_API_KEY_HERE":
+            print("⚠️ Clarifai API key ayarlanmamış, demo modu kullanılıyor")
+            return analyze_food_demo(image_data)
+        
+        # Base64 image'i hazırla
+        import base64
+        if isinstance(image_data, str):
+            # Zaten base64 ise
+            image_base64 = image_data
+        else:
+            # Numpy array'den base64'e çevir
+            _, buffer = cv2.imencode('.jpg', image_data)
+            image_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        # Clarifai API isteği
+        headers = {
+            'Authorization': f'Key {CLARIFAI_API_KEY}',
+            'Content-Type': 'application/json'
+        }
+        
+        data = {
+            "user_app_id": {
+                "user_id": CLARIFAI_USER_ID,
+                "app_id": CLARIFAI_APP_ID
+            },
+            "model_id": CLARIFAI_MODEL_ID,
+            "inputs": [
+                {
+                    "data": {
+                        "image": {
+                            "base64": image_base64
+                        }
+                    }
+                }
+            ]
+        }
+        
+        response = requests.post(
+            'https://api.clarifai.com/v2/models/predictions',
+            headers=headers,
+            json=data,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            
+            # Sonuçları işle
+            detected_foods = []
+            total_calories = 0
+            
+            if 'outputs' in result and len(result['outputs']) > 0:
+                concepts = result['outputs'][0]['data']['concepts']
+                
+                for concept in concepts[:5]:  # İlk 5 sonuç
+                    food_name = concept['name'].lower()
+                    confidence = concept['value']
+                    
+                    if confidence > 0.5:  # %50'den yüksek güven
+                        # Kalori hesapla
+                        calories = FOOD_CALORIES_DB.get(food_name, 100)  # Default 100 kalori
+                        portion_calories = int(calories * confidence)  # Güvene göre ayarla
+                        
+                        detected_foods.append({
+                            'name': food_name.title(),
+                            'confidence': confidence,
+                            'calories': portion_calories
+                        })
+                        
+                        total_calories += portion_calories
+            
+            if not detected_foods:
+                # Hiç yemek bulunamadıysa
+                detected_foods = [{'name': 'Bilinmeyen Yemek', 'confidence': 0.5, 'calories': 150}]
+                total_calories = 150
+            
+            return {
+                'detected_foods': detected_foods,
+                'total_calories': total_calories,
+                'confidence': max([f['confidence'] for f in detected_foods]) if detected_foods else 0.5,
+                'api_used': 'Clarifai'
+            }
+        
+        else:
+            print(f"❌ Clarifai API hatası: {response.status_code}")
+            return analyze_food_demo(image_data)
+            
+    except Exception as e:
+        print(f"❌ Clarifai API bağlantı hatası: {e}")
+        return analyze_food_demo(image_data)
+
+def analyze_food_demo(image_data):
+    """Demo yemek analizi (API olmadığında)"""
+    import random
+    
+    demo_foods = [
+        {'name': 'Pizza', 'calories': 266},
+        {'name': 'Salata', 'calories': 150},
+        {'name': 'Tavuk', 'calories': 165},
+        {'name': 'Pilav', 'calories': 130},
+        {'name': 'Makarna', 'calories': 220},
+        {'name': 'Hamburger', 'calories': 354},
+        {'name': 'Sandviç', 'calories': 250}
+    ]
+    
+    # Rastgele 1-3 yemek seç
+    num_foods = random.randint(1, 3)
+    selected_foods = random.sample(demo_foods, num_foods)
+    
+    detected_foods = []
+    total_calories = 0
+    
+    for food in selected_foods:
+        confidence = random.uniform(0.6, 0.9)
+        calories = int(food['calories'] * random.uniform(0.8, 1.2))  # ±20% varyasyon
+        
+        detected_foods.append({
+            'name': food['name'],
+            'confidence': confidence,
+            'calories': calories
+        })
+        
+        total_calories += calories
+    
+    return {
+        'detected_foods': detected_foods,
+        'total_calories': total_calories,
+        'confidence': random.uniform(0.7, 0.9),
+        'api_used': 'Demo'
+    }
 
 def analyze_food_image(image):
     """Yemek görüntüsünü analiz et ve kalori hesapla"""
@@ -494,6 +694,130 @@ def capture_webcam_frame():
     finally:
         if cap:
             cap.release()
+
+def take_food_photo():
+    """Yemek fotoğrafı çek ve analiz et"""
+    global camera, realsense_pipeline, camera_mode
+    
+    try:
+        # Kamera türünü tespit et
+        if not detect_camera_type():
+            socketio.emit('food_analysis_error', {'message': 'Kamera bulunamadı'})
+            return
+        
+        if camera_mode == "realsense":
+            # RealSense ile fotoğraf çek
+            try:
+                realsense_pipeline = rs.pipeline()
+                config = rs.config()
+                config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+                
+                profile = realsense_pipeline.start(config)
+                
+                # 3 saniye geri sayım
+                for i in range(3, 0, -1):
+                    socketio.emit('food_capture_countdown', {'count': i})
+                    socketio.sleep(1)
+                
+                socketio.emit('food_capture_started')
+                
+                # Fotoğraf çek
+                frames = realsense_pipeline.wait_for_frames()
+                color_frame = frames.get_color_frame()
+                
+                if color_frame:
+                    frame = np.asanyarray(color_frame.get_data())
+                    frame = cv2.flip(frame, 1)  # Aynala
+                    
+                    # Fotoğraf çekildi, analiz et
+                    socketio.emit('food_analysis_started')
+                    
+                    # Gerçek yemek analizi
+                    analysis_result = analyze_food_with_clarifai(frame)
+                    
+                    # Sonucu gönder
+                    _, buffer = cv2.imencode('.jpg', frame)
+                    img_base64 = base64.b64encode(buffer).decode('utf-8')
+                    
+                    socketio.emit('food_analysis_result', {
+                        'image': img_base64,
+                        'analysis': analysis_result
+                    })
+                    
+                    print(f"✅ RealSense yemek analizi tamamlandı")
+                else:
+                    socketio.emit('food_analysis_error', {'message': 'RealSense fotoğraf çekilemedi'})
+                
+                realsense_pipeline.stop()
+                
+            except Exception as e:
+                print(f"❌ RealSense yemek fotoğrafı hatası: {e}")
+                socketio.emit('food_analysis_error', {'message': f'RealSense hatası: {str(e)}'})
+        
+        else:
+            # Webcam ile fotoğraf çek
+            try:
+                working_cameras = [4, 6, 2, 0, 1]
+                working_camera_index = None
+                
+                for camera_index in working_cameras:
+                    test_cap = cv2.VideoCapture(camera_index)
+                    if test_cap.isOpened():
+                        ret, frame = test_cap.read()
+                        if ret and frame is not None:
+                            working_camera_index = camera_index
+                            test_cap.release()
+                            break
+                        test_cap.release()
+                
+                if working_camera_index is None:
+                    socketio.emit('food_analysis_error', {'message': 'Webcam bulunamadı'})
+                    return
+                
+                camera = cv2.VideoCapture(working_camera_index)
+                camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                
+                # 3 saniye geri sayım
+                for i in range(3, 0, -1):
+                    socketio.emit('food_capture_countdown', {'count': i})
+                    socketio.sleep(1)
+                
+                socketio.emit('food_capture_started')
+                
+                # Fotoğraf çek
+                ret, frame = camera.read()
+                if ret:
+                    frame = cv2.flip(frame, 1)  # Aynala
+                    
+                    # Fotoğraf çekildi, analiz et
+                    socketio.emit('food_analysis_started')
+                    
+                    # Gerçek yemek analizi
+                    analysis_result = analyze_food_with_clarifai(frame)
+                    
+                    # Sonucu gönder
+                    _, buffer = cv2.imencode('.jpg', frame)
+                    img_base64 = base64.b64encode(buffer).decode('utf-8')
+                    
+                    socketio.emit('food_analysis_result', {
+                        'image': img_base64,
+                        'analysis': analysis_result
+                    })
+                    
+                    print(f"✅ Webcam yemek analizi tamamlandı")
+                else:
+                    socketio.emit('food_analysis_error', {'message': 'Webcam fotoğraf çekilemedi'})
+                
+                camera.release()
+                
+            except Exception as e:
+                print(f"❌ Webcam yemek fotoğrafı hatası: {e}")
+                socketio.emit('food_analysis_error', {'message': f'Webcam hatası: {str(e)}'})
+    
+    except Exception as e:
+        print(f"❌ Genel yemek fotoğrafı hatası: {e}")
+        socketio.emit('food_analysis_error', {'message': f'Genel hata: {str(e)}'})
 
 def take_food_photo_realsense():
     """RealSense ile yemek fotoğrafı çek"""
@@ -1962,7 +2286,6 @@ def handle_check_connection():
     """Connection check handler - parametre gerektirmez"""
     try:
         safe_emit('connection_ok', {'status': 'ok', 'timestamp': time.time()})
-    food_capture_active = False
     except Exception as e:
         print(f"❌ Connection check hatası: {e}")
 
