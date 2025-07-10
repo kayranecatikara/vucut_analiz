@@ -862,6 +862,17 @@ def handle_take_food_photo(data):
         food_camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         food_camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
+        # Kamera ayarlarını iyileştir - daha parlak görüntü için
+        food_camera.set(cv2.CAP_PROP_BRIGHTNESS, 0.6)      # Parlaklığı artır
+        food_camera.set(cv2.CAP_PROP_CONTRAST, 1.2)        # Kontrastı artır
+        food_camera.set(cv2.CAP_PROP_SATURATION, 1.1)      # Renk doygunluğu
+        food_camera.set(cv2.CAP_PROP_GAIN, 0.3)            # Gain ekle
+        food_camera.set(cv2.CAP_PROP_EXPOSURE, -4)         # Pozlamayı ayarla
+        food_camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)  # Otomatik pozlama
+        
+        # Kameranın ayarları alması için bekle
+        socketio.sleep(0.5)
+        
         # 3 saniye geri sayım
         for i in range(3, 0, -1):
             socketio.emit('food_capture_countdown', {'count': i})
@@ -871,14 +882,34 @@ def handle_take_food_photo(data):
         
         # Fotoğraf çek
         ret, frame = food_camera.read()
+        
+        # Eğer ilk frame koyu gelirse, birkaç frame daha dene
+        if ret:
+            for _ in range(3):  # 3 frame daha çek, son frame'i kullan
+                ret2, frame2 = food_camera.read()
+                if ret2:
+                    frame = frame2
+                socketio.sleep(0.1)
+        
         food_camera.release()
         
         if ret and frame is not None:
             # RGB görüntüyü ayna yap
             frame = cv2.flip(frame, 1)
             
+            # Görüntüyü parlaklaştır (yazılımsal)
+            frame = cv2.convertScaleAbs(frame, alpha=1.3, beta=30)  # alpha=kontrast, beta=parlaklık
+            
+            # Renk dengelemesi yap
+            lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            l = clahe.apply(l)
+            frame = cv2.merge([l, a, b])
+            frame = cv2.cvtColor(frame, cv2.COLOR_LAB2BGR)
+            
             # JPEG olarak encode et
-            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
             img_base64 = base64.b64encode(buffer).decode('utf-8')
             
             socketio.emit('food_analysis_started')
