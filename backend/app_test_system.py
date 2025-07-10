@@ -1011,7 +1011,7 @@ def process_food_photo():
     finally:
         calorie_calculation_active = False
 
-# Model yüklemeyi dene
+
 if not load_movenet_model():
     print("🛑 Sistem model olmadan çalışamaz. Çıkılıyor...")
     exit(1)
