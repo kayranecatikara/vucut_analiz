@@ -2557,6 +2557,9 @@ def initialize_food_analyzer():
         return False
 
 if __name__ == '__main__':
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    
     # Food analyzer'ı başlat
     initialize_food_analyzer()
     
@@ -2577,7 +2580,7 @@ if __name__ == '__main__':
     print("   - Kalori hesaplama özelliği")
     print("   - Yemek fotoğrafı çekme")
     print()
-    
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
     if REALSENSE_AVAILABLE:
         print("✅ RealSense support: Available")
     else:
