@@ -193,9 +193,9 @@ def capture_realsense_frame():
         frames = pipeline.wait_for_frames(timeout_ms=1000)
         color_frame = frames.get_color_frame()
         
+        if color_frame:
             # RGB görüntüyü numpy array'e çevir ve aynala
             color_image = np.asanyarray(color_frame.get_data())
-            color_image = cv2.flip(color_image, 1)  # Aynala
             color_image = cv2.flip(color_image, 1)  # Mirror
             return color_image
         
@@ -252,6 +252,54 @@ def capture_webcam_frame():
         if cap:
             cap.release()
 
+def take_food_photo_realsense():
+    """RealSense ile yemek fotoğrafı çek"""
+    global realsense_pipeline
+    
+    try:
+        realsense_pipeline = rs.pipeline()
+        config = rs.config()
+        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        
+        profile = realsense_pipeline.start(config)
+        
+        print("✅ RealSense fotoğraf çekimi başlatıldı")
+        
+        # 3 saniye geri sayım
+        for i in range(3, 0, -1):
+            socketio.emit('food_capture_countdown', {'count': i})
+            socketio.sleep(1)
+        
+        socketio.emit('food_capture_started')
+        
+        # Fotoğraf çek
+        frames = realsense_pipeline.wait_for_frames(timeout_ms=5000)
+        color_frame = frames.get_color_frame()
+        
+        if color_frame:
+            color_image = np.asanyarray(color_frame.get_data())
+            color_image = cv2.flip(color_image, 1)  # Aynala
+            
+            # JPEG olarak encode et
+            _, buffer = cv2.imencode('.jpg', color_image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            img_base64 = base64.b64encode(buffer).decode('utf-8')
+            
+            print("✅ RealSense RGB fotoğraf çekildi")
+            return img_base64
+        else:
+            print("❌ RealSense color frame alınamadı")
+            return None
+            
+    except Exception as e:
+        print(f"❌ RealSense fotoğraf çekme hatası: {e}")
+        return None
+    finally:
+        if realsense_pipeline:
+            try:
+                realsense_pipeline.stop()
+            except:
+                pass
+
 def process_food_photo():
     """Yemek fotoğrafını işle ve kalori hesapla"""
     global calorie_calculation_active
@@ -271,8 +319,7 @@ def process_food_photo():
         # Frame yakala
         captured_frame = capture_single_frame()
         
-            # Frame'i aynala
-            color_image = cv2.flip(frame, 1)
+        if captured_frame is None:
             safe_emit('food_analysis_error', {'message': 'Fotoğraf çekilemedi'})
             return
         
