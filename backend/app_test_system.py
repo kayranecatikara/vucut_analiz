@@ -404,12 +404,12 @@ def load_movenet_model():
                 print(f"⏳ {retry_delay} saniye bekleyip tekrar denenecek...")
                 time.sleep(retry_delay)
             else:
-                print("❌ Model yüklenemedi. Lütfen internet bağlantınızı kontrol edin.")
-                return False
-    
-    return False
-
-                print("   5. python download_model.py komutunu çalıştırın")
+            print("💡 Çözüm önerileri:")
+            print("   1. İnternet bağlantınızı kontrol edin")
+            print("   2. VPN kullanıyorsanız kapatmayı deneyin")
+            print("   3. Firewall ayarlarını kontrol edin")
+            print("   4. Birkaç dakika sonra tekrar deneyin")
+            print("   5. python download_model.py komutunu çalıştırın")
 
 def analyze_food_demo(image_data):
     """Demo yemek analizi (API olmadığında)"""
