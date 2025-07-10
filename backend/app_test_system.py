@@ -1259,6 +1259,19 @@ def run_webcam_test():
         camera = cv2.VideoCapture(working_camera_index)
         camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         camera.set(cv2.CAP_PROP_FPS, 30)
+        
+        # Görüntü kalitesi ayarları
+        print("🔧 Kamera ayarları yapılandırılıyor...")
+        camera.set(cv2.CAP_PROP_BRIGHTNESS, 128)  # Parlaklık (0-255)
+        camera.set(cv2.CAP_PROP_CONTRAST, 60)     # Kontrast (0-100)
+        camera.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # Otomatik pozlamayı kapat
+        camera.set(cv2.CAP_PROP_EXPOSURE, -4)     # Manuel pozlama (-13 ile 0 arası)
+        
+        # Ayarları kontrol et
+        brightness = camera.get(cv2.CAP_PROP_BRIGHTNESS)
+        contrast = camera.get(cv2.CAP_PROP_CONTRAST)
+        exposure = camera.get(cv2.CAP_PROP_EXPOSURE)
+        print(f"📊 Kamera ayarları - Parlaklık: {brightness}, Kontrast: {contrast}, Pozlama: {exposure}")
         print("✅ Webcam test başlatıldı")
         safe_emit('test_started', {'duration': TEST_DURATION})
         
