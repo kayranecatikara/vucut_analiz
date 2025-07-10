@@ -128,6 +128,223 @@ def load_movenet_model():
     
     return False
 
+def analyze_food_image(image):
+    """Yemek görüntüsünü analiz et ve kalori hesapla"""
+    try:
+        # Gerçek yemek analizi API'si
+        print("🔍 Yemek analizi başlıyor...")
+        
+        # Görüntüyü base64'e çevir
+        _, buffer = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        # Clarifai Food Model API'si kullan
+        analysis_result = analyze_with_clarifai(img_base64)
+        
+        if analysis_result:
+            return analysis_result
+        
+        # Fallback: Basit renk analizi
+        return analyze_with_color_detection(image)
+        
+    except Exception as e:
+        print(f"❌ Yemek analizi hatası: {e}")
+        return analyze_with_color_detection(image)
+
+def analyze_with_clarifai(img_base64):
+    """Clarifai API ile yemek analizi"""
+    try:
+        import requests
+        
+        # Clarifai API ayarları
+        API_KEY = "YOUR_CLARIFAI_API_KEY"  # Gerçek API key gerekli
+        MODEL_ID = "food-item-recognition"
+        
+        headers = {
+            'Authorization': f'Key {API_KEY}',
+            'Content-Type': 'application/json'
+        }
+        
+        data = {
+            "inputs": [
+                {
+                    "data": {
+                        "image": {
+                            "base64": img_base64
+                        }
+                    }
+                }
+            ]
+        }
+        
+        url = f"https://api.clarifai.com/v2/models/{MODEL_ID}/outputs"
+        
+        print("🌐 Clarifai API'sine istek gönderiliyor...")
+        response = requests.post(url, headers=headers, json=data, timeout=10)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return process_clarifai_response(result)
+        else:
+            print(f"❌ Clarifai API hatası: {response.status_code}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Clarifai API bağlantı hatası: {e}")
+        return None
+
+def process_clarifai_response(api_response):
+    """Clarifai API yanıtını işle"""
+    try:
+        detected_foods = []
+        total_calories = 0
+        
+        if 'outputs' in api_response and len(api_response['outputs']) > 0:
+            concepts = api_response['outputs'][0]['data']['concepts']
+            
+            for concept in concepts[:5]:  # İlk 5 sonuç
+                food_name = concept['name']
+                confidence = concept['value']
+                
+                if confidence > 0.5:  # %50'den yüksek güven
+                    # Basit kalori tahmini (gerçek uygulamada nutrition API kullanılmalı)
+                    estimated_calories = estimate_calories_by_food_name(food_name)
+                    
+                    detected_foods.append({
+                        'name': food_name,
+                        'confidence': confidence,
+                        'calories': estimated_calories
+                    })
+                    
+                    total_calories += estimated_calories
+        
+        return {
+            'detected_foods': detected_foods,
+            'total_calories': total_calories,
+            'confidence': sum(f['confidence'] for f in detected_foods) / len(detected_foods) if detected_foods else 0,
+            'method': 'Clarifai API'
+        }
+        
+    except Exception as e:
+        print(f"❌ Clarifai yanıt işleme hatası: {e}")
+        return None
+
+def analyze_with_color_detection(image):
+    """Renk analizi ile basit yemek tahmini"""
+    try:
+        print("🎨 Renk analizi ile yemek tahmini yapılıyor...")
+        
+        # Görüntüyü HSV'ye çevir
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        
+        # Renk aralıkları tanımla
+        color_foods = {
+            'kırmızı_yemek': {
+                'range': [(0, 50, 50), (10, 255, 255)],
+                'foods': ['domates', 'kırmızı et', 'kırmızı biber'],
+                'avg_calories': 150
+            },
+            'yeşil_yemek': {
+                'range': [(40, 50, 50), (80, 255, 255)],
+                'foods': ['salata', 'brokoli', 'yeşil sebze'],
+                'avg_calories': 50
+            },
+            'sarı_yemek': {
+                'range': [(20, 50, 50), (40, 255, 255)],
+                'foods': ['muz', 'patates', 'makarna'],
+                'avg_calories': 200
+            },
+            'kahverengi_yemek': {
+                'range': [(10, 50, 20), (20, 255, 200)],
+                'foods': ['ekmek', 'et', 'çikolata'],
+                'avg_calories': 250
+            }
+        }
+        
+        detected_foods = []
+        total_calories = 0
+        
+        for color_name, color_info in color_foods.items():
+            lower = np.array(color_info['range'][0])
+            upper = np.array(color_info['range'][1])
+            
+            mask = cv2.inRange(hsv, lower, upper)
+            pixel_count = cv2.countNonZero(mask)
+            
+            if pixel_count > 1000:  # Yeterli pixel varsa
+                confidence = min(pixel_count / 10000, 1.0)
+                food_name = color_info['foods'][0]  # İlk yemek adını al
+                calories = int(color_info['avg_calories'] * confidence)
+                
+                detected_foods.append({
+                    'name': food_name,
+                    'confidence': confidence,
+                    'calories': calories
+                })
+                
+                total_calories += calories
+        
+        if not detected_foods:
+            # Hiçbir şey bulunamazsa varsayılan
+            detected_foods = [{'name': 'genel yemek', 'confidence': 0.5, 'calories': 200}]
+            total_calories = 200
+        
+        return {
+            'detected_foods': detected_foods,
+            'total_calories': total_calories,
+            'confidence': sum(f['confidence'] for f in detected_foods) / len(detected_foods),
+            'method': 'Renk Analizi'
+        }
+        
+    except Exception as e:
+        print(f"❌ Renk analizi hatası: {e}")
+        return {
+            'detected_foods': [{'name': 'bilinmeyen', 'confidence': 0.3, 'calories': 150}],
+            'total_calories': 150,
+            'confidence': 0.3,
+            'method': 'Varsayılan'
+        }
+
+def estimate_calories_by_food_name(food_name):
+    """Yemek adına göre kalori tahmini"""
+    calorie_db = {
+        'apple': 80, 'banana': 105, 'orange': 60,
+        'bread': 250, 'rice': 200, 'pasta': 220,
+        'chicken': 165, 'beef': 250, 'fish': 140,
+        'salad': 50, 'pizza': 285, 'burger': 540,
+        'cake': 350, 'cookie': 150, 'chocolate': 210,
+        'milk': 150, 'coffee': 5, 'tea': 2,
+        'potato': 160, 'tomato': 18, 'carrot': 25,
+        'cheese': 113, 'egg': 70, 'yogurt': 100
+    }
+    
+    # Türkçe yemek isimleri
+    turkish_foods = {
+        'elma': 80, 'muz': 105, 'portakal': 60,
+        'ekmek': 250, 'pirinç': 200, 'makarna': 220,
+        'tavuk': 165, 'et': 250, 'balık': 140,
+        'salata': 50, 'pizza': 285, 'hamburger': 540,
+        'pasta': 350, 'kurabiye': 150, 'çikolata': 210,
+        'süt': 150, 'kahve': 5, 'çay': 2,
+        'patates': 160, 'domates': 18, 'havuç': 25,
+        'peynir': 113, 'yumurta': 70, 'yoğurt': 100
+    }
+    
+    food_lower = food_name.lower()
+    
+    # Önce Türkçe sözlükte ara
+    for turkish_name, calories in turkish_foods.items():
+        if turkish_name in food_lower:
+            return calories
+    
+    # Sonra İngilizce sözlükte ara
+    for english_name, calories in calorie_db.items():
+        if english_name in food_lower:
+            return calories
+    
+    # Bulunamazsa ortalama değer döndür
+    return 150
+
 def simulate_food_detection(image_data):
     """Yemek tespiti simülasyonu - gerçek API ile değiştirilecek"""
     foods_database = [
