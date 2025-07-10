@@ -1465,7 +1465,7 @@ def run_webcam_test():
     global test_running, camera, analysis_results
     
     try:
-        working_cameras = [6, 2, 0, 1, 4]  # 4 ve 2'yi öncelikle dene
+        working_cameras = [4, 6, 2, 0, 1]
         working_camera_index = None
         
         for camera_index in working_cameras:
@@ -1519,6 +1519,17 @@ def run_webcam_test():
                 
                 failed_frame_count = 0
                 frame = cv2.flip(frame, 1)
+                
+                # Parlaklık ve kontrast filtreleri uygula
+                frame = cv2.convertScaleAbs(frame, alpha=1.3, beta=30)
+                
+                # CLAHE (Contrast Limited Adaptive Histogram Equalization) uygula
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+                lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                cl = clahe.apply(l)
+                limg = cv2.merge((cl,a,b))
+                frame = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
                 
                 # Parlaklık ve kontrast filtreleri
                 frame = cv2.convertScaleAbs(frame, alpha=1.3, beta=30)
