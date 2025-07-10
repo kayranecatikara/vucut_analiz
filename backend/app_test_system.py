@@ -24,6 +24,7 @@ import io
 from PIL import Image
 from typing import Optional, Tuple, Dict, Any
 import threading
+import os
 import random
 # --- Food Analysis ---
 from food_analyzer import FoodAnalyzer
@@ -317,6 +318,19 @@ def load_movenet_model():
     """Load MoveNet model with retry mechanism"""
     global model, movenet
     
+    # Önce yerel model var mı kontrol et
+    model_dir = "./movenet_model"
+    if os.path.exists(model_dir):
+        try:
+            print("📂 Yerel model yükleniyor...")
+            model = tf.saved_model.load(model_dir)
+            movenet = model.signatures['serving_default']
+            print("✅ Yerel MoveNet model yüklendi!")
+            return True
+        except Exception as e:
+            print(f"❌ Yerel model yüklenemedi: {e}")
+            print("🌐 İnternetten indirmeye çalışılıyor...")
+    
     max_retries = 3
     retry_delay = 5
     
@@ -330,6 +344,14 @@ def load_movenet_model():
             
             model = hub.load("https://tfhub.dev/google/movenet/singlepose/lightning/4")
             movenet = model.signatures['serving_default']
+            
+            # İndirilen modeli kaydet
+            try:
+                tf.saved_model.save(model, model_dir)
+                print("💾 Model yerel olarak kaydedildi!")
+            except Exception as save_error:
+                print(f"⚠️ Model kaydedilemedi: {save_error}")
+            
             print("✅ MoveNet model loaded successfully.")
             return True
             
@@ -345,6 +367,7 @@ def load_movenet_model():
     return False
 
 def analyze_food_with_clarifai(image_data):
+                print("   5. python download_model.py komutunu çalıştırın")
     """Clarifai API ile yemek analizi yap"""
     try:
         # API key kontrolü
