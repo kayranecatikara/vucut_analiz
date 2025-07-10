@@ -28,7 +28,94 @@ import random
 # --- Food Analysis ---
 from food_analyzer import FoodAnalyzer
 
+# --- Food Analysis ---
+from food_analyzer import FoodAnalyzer
 
+def capture_realsense_photo():
+    """RealSense ile fotoğraf çek"""
+    global realsense_pipeline
+    
+    try:
+        # RealSense pipeline başlat
+        realsense_pipeline = rs.pipeline()
+        config = rs.config()
+        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        
+        profile = realsense_pipeline.start(config)
+        
+        # Birkaç frame bekle (kamera stabilize olsun)
+        for _ in range(10):
+            realsense_pipeline.wait_for_frames()
+        
+        # Fotoğraf çek
+        frames = realsense_pipeline.wait_for_frames()
+        color_frame = frames.get_color_frame()
+        
+        if color_frame:
+            color_image = np.asanyarray(color_frame.get_data())
+            color_image = cv2.flip(color_image, 1)  # Mirror
+            
+            # JPEG formatına çevir
+            _, buffer = cv2.imencode('.jpg', color_image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            return buffer.tobytes()
+        
+        return None
+        
+    except Exception as e:
+        print(f"RealSense fotoğraf hatası: {e}")
+        return None
+    finally:
+        if realsense_pipeline:
+            realsense_pipeline.stop()
+
+def capture_webcam_photo():
+    """Webcam ile fotoğraf çek"""
+    global camera
+    
+    try:
+        # Webcam aç
+        working_cameras = [0, 1, 2, 4, 6]
+        working_camera_index = None
+        
+        for camera_index in working_cameras:
+            test_cap = cv2.VideoCapture(camera_index)
+            if test_cap.isOpened():
+                ret, frame = test_cap.read()
+                if ret and frame is not None:
+                    working_camera_index = camera_index
+                    test_cap.release()
+                    break
+                test_cap.release()
+        
+        if working_camera_index is None:
+            return None
+        
+        camera = cv2.VideoCapture(working_camera_index)
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
+        # Birkaç frame bekle
+        for _ in range(10):
+            camera.read()
+        
+        # Fotoğraf çek
+        ret, frame = camera.read()
+        
+        if ret and frame is not None:
+            frame = cv2.flip(frame, 1)  # Mirror
+            
+            # JPEG formatına çevir
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            return buffer.tobytes()
+        
+        return None
+        
+    except Exception as e:
+        print(f"Webcam fotoğraf hatası: {e}")
+        return None
+    finally:
+        if camera:
+            camera.release()
 # --- AI Libraries ---
 import tensorflow as tf
 import tensorflow_hub as hub
@@ -166,6 +253,23 @@ final_analysis = {
     'diyet_onerileri': []
 }
 
+# Food analyzer
+food_analyzer = None
+
+# Kalori hesaplama state'leri
+FOOD_PHOTO_COUNTDOWN = 3  # Yemek fotoğrafı için geri sayım
+
+def initialize_food_analyzer():
+    """Food analyzer'ı başlat"""
+    global food_analyzer
+    try:
+        api_key = "920c5f81c0264c2ca92a1d916e604a7694c560e9"
+        food_analyzer = FoodAnalyzer(api_key)
+        print("✅ Food analyzer başlatıldı")
+        return True
+    except Exception as e:
+        print(f"❌ Food analyzer başlatılamadı: {e}")
+        return False
 # Food analyzer
 food_analyzer = None
 food_capture_active = False
@@ -2042,6 +2146,54 @@ def run_webcam_test():
 
 def take_food_photo():
     """Yemek fotoğrafı çek ve analiz et"""
+    global camera, realsense_pipeline, camera_mode
+    
+    try:
+        if not food_analyzer:
+            socketio.emit('food_analysis_error', {'message': 'Food analyzer başlatılamadı'})
+            return
+        
+        # Kamera tipini belirle
+        if not detect_camera_type():
+            socketio.emit('food_analysis_error', {'message': 'Kamera bulunamadı'})
+            return
+        
+        # Geri sayım
+        for i in range(FOOD_PHOTO_COUNTDOWN, 0, -1):
+            socketio.emit('food_capture_countdown', {'count': i})
+            time.sleep(1)
+        
+        socketio.emit('food_capture_started')
+        
+        # Fotoğraf çek
+        image_data = None
+        
+        if camera_mode == "realsense":
+            image_data = capture_realsense_photo()
+        else:
+            image_data = capture_webcam_photo()
+        
+        if image_data:
+            socketio.emit('food_analysis_started')
+            
+            # Yemek analizi yap
+            analysis_result = food_analyzer.analyze_food_image(image_data)
+            
+            # Sonucu gönder
+            socketio.emit('food_analysis_result', {
+                'image': analysis_result['image'],
+                'analysis': analysis_result
+            })
+            
+            print(f"✅ Yemek analizi tamamlandı: {analysis_result['total_calories']} kalori")
+        else:
+            socketio.emit('food_analysis_error', {'message': 'Fotoğraf çekilemedi'})
+            
+    except Exception as e:
+        print(f"❌ Yemek fotoğrafı hatası: {e}")
+        socketio.emit('food_analysis_error', {'message': f'Hata: {str(e)}'})
+def take_food_photo():
+    """Yemek fotoğrafı çek ve analiz et"""
     global camera, realsense_pipeline, camera_mode, food_capture_active
     
     food_capture_active = True
@@ -2414,6 +2566,12 @@ def handle_stop_test(data):
     try:
         test_running = False
         safe_emit('test_stopped')
+@socketio.on('take_food_photo')
+def handle_take_food_photo(data):
+    """Yemek fotoğrafı çekme isteği"""
+    if not test_running:  # Test çalışmıyorsa fotoğraf çekebilir
+        socketio.start_background_task(target=take_food_photo)
+        print("📸 Yemek fotoğrafı çekiliyor")
         print("🛑 Test durduruldu")
     except Exception as e:
         print(f"❌ Test durdurma hatası: {e}")
@@ -2471,6 +2629,9 @@ if __name__ == '__main__':
     # Food analyzer'ı başlat
     initialize_food_analyzer()
     
+    # Food analyzer'ı başlat
+    initialize_food_analyzer()
+    
     print("🚀 Starting Test-Based Body Analysis System...")
     print("📋 Features:")
     print("   - 10 saniye test süresi")
@@ -2478,6 +2639,7 @@ if __name__ == '__main__':
     print("   - Vücut tipi analizi")
     print("   - Sol ekranda ölçüm verileri")
     print("   - Yemek fotoğrafı ile kalori hesaplama")
+    print("   - Yemek fotoğrafı analizi ve kalori hesaplama")
     print("   - Yemek fotoğrafı analizi ve kalori hesaplama")
     print("   - RGB görüntü al")
     print("   - Gelişmiş omuz algılama")
