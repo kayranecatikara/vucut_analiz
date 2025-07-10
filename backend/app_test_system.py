@@ -31,6 +31,9 @@ from food_analyzer import FoodAnalyzer
 # --- Food Analysis ---
 from food_analyzer import FoodAnalyzer
 
+# --- Food Analysis ---
+from food_analyzer import FoodAnalyzer
+
 def capture_realsense_photo():
     """RealSense ile fotoğraf çek"""
     global realsense_pipeline
@@ -163,6 +166,7 @@ heartbeat_active = False
 TEST_DURATION = 10  # 10 saniye test süresi
 ANALYSIS_INTERVAL = 0.5  # Yarım saniyede bir analiz
 FOOD_PHOTO_COUNTDOWN = 3  # Yemek fotoğrafı için geri sayım
+FOOD_PHOTO_COUNTDOWN = 3  # Yemek fotoğrafı için geri sayım
 FOOD_CAPTURE_COUNTDOWN = 3  # 3 saniye geri sayım
 
 # API Konfigürasyonu
@@ -252,6 +256,9 @@ final_analysis = {
     'confidence': 0.0,
     'diyet_onerileri': []
 }
+
+# Food analyzer
+food_analyzer = None
 
 # Food analyzer
 food_analyzer = None
