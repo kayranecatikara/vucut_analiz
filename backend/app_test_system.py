@@ -1367,6 +1367,16 @@ def run_realsense_test():
                 color_image = np.asanyarray(color_frame.get_data())
                 color_image = cv2.flip(color_image, 1)
                 
+                # Parlaklık ve kontrast filtreleri uygula
+                color_image = cv2.convertScaleAbs(color_image, alpha=1.3, beta=30)
+                
+                # Histogram eşitleme (parlaklığı dengeler)
+                lab = cv2.cvtColor(color_image, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                l = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(l)
+                color_image = cv2.merge([l, a, b])
+                color_image = cv2.cvtColor(color_image, cv2.COLOR_LAB2BGR)
+                
                 # Run pose detection
                 keypoints = run_movenet(color_image)
                 
@@ -1509,6 +1519,16 @@ def run_webcam_test():
                 
                 failed_frame_count = 0
                 frame = cv2.flip(frame, 1)
+                
+                # Parlaklık ve kontrast filtreleri uygula
+                frame = cv2.convertScaleAbs(frame, alpha=1.3, beta=30)
+                
+                # Histogram eşitleme (parlaklığı dengeler)
+                lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                l = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(l)
+                frame = cv2.merge([l, a, b])
+                frame = cv2.cvtColor(frame, cv2.COLOR_LAB2BGR)
                 
                 # Görüntü iyileştirme filtreleri
                 # 1. Parlaklık ve kontrast ayarı
