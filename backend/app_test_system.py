@@ -213,7 +213,7 @@ def capture_webcam_frame():
     cap = None
     try:
         # Çalışan kamera index'ini bul
-        working_cameras = [4, 6, 2, 0, 1]
+        working_cameras = [6, 4, 2, 0, 1]
         working_camera_index = None
         
         for camera_index in working_cameras:
