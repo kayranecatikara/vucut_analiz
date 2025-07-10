@@ -1311,7 +1311,38 @@ def run_movenet(input_image: np.ndarray) -> np.ndarray:
     """Run MoveNet model on input image and return keypoints"""
     if movenet is None:
         # Offline modda sahte keypoints döndür
+        # Sahte ama gerçekçi keypoints oluştur
         height, width = input_image.shape[:2]
+        fake_keypoints = np.array([
+            # nose
+            [0.3, 0.5, 0.9],
+            # eyes
+            [0.28, 0.48, 0.8], [0.32, 0.52, 0.8],
+            # ears  
+            [0.26, 0.46, 0.7], [0.34, 0.54, 0.7],
+            # shoulders (önemli!)
+            [0.25, 0.4, 0.9], [0.35, 0.6, 0.9],
+            # elbows
+            [0.22, 0.35, 0.8], [0.38, 0.65, 0.8],
+            # wrists
+            [0.20, 0.32, 0.7], [0.40, 0.68, 0.7],
+            # hips (önemli!)
+            [0.27, 0.42, 0.9], [0.33, 0.58, 0.9],
+            # knees
+            [0.26, 0.41, 0.8], [0.34, 0.59, 0.8],
+            # ankles
+            [0.25, 0.40, 0.7], [0.35, 0.60, 0.7]
+        ])
+        
+        # Biraz rastgelelik ekle (hareket simülasyonu)
+        import random
+        noise = 0.02
+        for i in range(len(fake_keypoints)):
+            if fake_keypoints[i][2] > 0.5:  # Sadece güvenilir keypoints'lere noise ekle
+                fake_keypoints[i][0] += random.uniform(-noise, noise)
+                fake_keypoints[i][1] += random.uniform(-noise, noise)
+        
+        return fake_keypoints
         fake_keypoints = np.zeros((17, 3))
         
         # Sahte keypoints oluştur (görsel test için)
@@ -1422,6 +1453,8 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
         lh_y, lh_x, lh_c = keypoints[KEYPOINT_DICT['left_hip']]
         rh_y, rh_x, rh_c = keypoints[KEYPOINT_DICT['right_hip']]
         
+        print(f"🔍 Keypoint güvenleri - LS: {ls_c:.2f}, RS: {rs_c:.2f}, LH: {lh_c:.2f}, RH: {rh_c:.2f}")
+        
         # Calculate shoulder width
         shoulder_width = 0.0
         if ls_c > 0.3 and rs_c > 0.3:
@@ -1431,6 +1464,7 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             if depth_frame is not None and depth_intrinsics is not None:
                 # RealSense 3D measurement
                 shoulder_width = calculate_3d_distance_safe(p1, p2, depth_frame, depth_intrinsics)
+                print(f"📏 3D Omuz genişliği: {shoulder_width}")
                 
                 # 3D başarısız olursa 2D'ye geç
                 if shoulder_width is None:
@@ -1444,8 +1478,10 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             else:
                 # Webcam pixel-based measurement
                 pixel_distance = calculate_pixel_distance(p1, p2)
-                shoulder_width = (pixel_distance / width) * 90
+                # Daha gerçekçi hesaplama
+                shoulder_width = (pixel_distance / width) * 120  # Biraz daha büyük ölçek
                 shoulder_width = max(25, min(75, shoulder_width))
+                print(f"📏 2D Omuz genişliği: {shoulder_width:.1f}cm (pixel: {pixel_distance:.1f})")
             
             if shoulder_width:
                 analysis_data['omuz_genisligi'] = shoulder_width
@@ -1459,6 +1495,7 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             if depth_frame is not None and depth_intrinsics is not None:
                 # RealSense 3D measurement
                 waist_width = calculate_3d_distance_safe(p1, p2, depth_frame, depth_intrinsics)
+                print(f"📏 3D Bel genişliği: {waist_width}")
                 
                 # 3D başarısız olursa 2D'ye geç
                 if waist_width is None:
@@ -1472,8 +1509,10 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             else:
                 # Webcam pixel-based measurement
                 pixel_distance = calculate_pixel_distance(p1, p2)
-                waist_width = (pixel_distance / width) * 70
+                # Daha gerçekçi hesaplama
+                waist_width = (pixel_distance / width) * 90  # Biraz daha büyük ölçek
                 waist_width = max(20, min(55, waist_width))
+                print(f"📏 2D Bel genişliği: {waist_width:.1f}cm (pixel: {pixel_distance:.1f})")
             
             if waist_width:
                 analysis_data['bel_genisligi'] = waist_width
@@ -1494,6 +1533,8 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
             # Confidence calculation
             confidence = (ls_c + rs_c + lh_c + rh_c) / 4
             analysis_data['confidence'] = min(1.0, confidence)
+            
+            print(f"🎯 Vücut tipi: {analysis_data['vucut_tipi']} (Oran: {ratio:.2f}, Güven: {confidence:.2f})")
         
         # Calculate distance to person
         if depth_frame is not None:
@@ -1506,8 +1547,9 @@ def analyze_body_measurements(keypoints: np.ndarray, frame_shape: Tuple[int, int
                     distance = safe_array_access(depth_image, center_y, center_x) * depth_frame.get_units()
                     if distance > 0:
                         analysis_data['mesafe'] = distance
+                        print(f"📐 Mesafe: {distance:.1f}m")
                 except Exception as e:
-                    pass
+                    print(f"Mesafe hesaplama hatası: {e}")
         else:
             # Fixed distance for webcam
             analysis_data['mesafe'] = 1.5
