@@ -26,6 +26,9 @@ import random
 # --- AI Libraries ---
 import tensorflow as tf
 import tensorflow_hub as hub
+import requests
+import io
+from PIL import Image
 
 # --- RealSense Library (Optional) ---
 try:
@@ -70,6 +73,11 @@ FOOD_CAPTURE_COUNTDOWN = 3  # 3 saniye geri sayım
 
 # Analiz verileri toplama
 analysis_results = []
+
+# Yemek analizi için global değişkenler
+food_capture_active = False
+food_capture_thread = None
+
 current_analysis = {
     'omuz_genisligi': 0.0,
     'bel_genisligi': 0.0,
@@ -87,6 +95,24 @@ final_analysis = {
     'mesafe': 0.0,
     'confidence': 0.0,
     'diyet_onerileri': []
+}
+
+# --- Yemek Analiz API Ayarları ---
+FOOD_API_URL = "https://api.logmeal.es/v2"
+FOOD_API_TOKEN = "YOUR_API_TOKEN_HERE"  # Buraya gerçek API token'ınızı koyun
+
+# Basit yemek veritabanı (API olmadığında kullanılacak)
+SIMPLE_FOOD_DATABASE = {
+    'ekmek': {'calories_per_100g': 265, 'typical_portion': 50},
+    'tavuk': {'calories_per_100g': 165, 'typical_portion': 150},
+    'pirinç': {'calories_per_100g': 130, 'typical_portion': 100},
+    'salata': {'calories_per_100g': 15, 'typical_portion': 100},
+    'meyve': {'calories_per_100g': 50, 'typical_portion': 150},
+    'sebze': {'calories_per_100g': 25, 'typical_portion': 100},
+    'et': {'calories_per_100g': 250, 'typical_portion': 120},
+    'balık': {'calories_per_100g': 200, 'typical_portion': 150},
+    'makarna': {'calories_per_100g': 350, 'typical_portion': 100},
+    'çorba': {'calories_per_100g': 50, 'typical_portion': 250}
 }
 
 # Kalori hesaplama state'leri
@@ -1669,6 +1695,175 @@ def run_webcam_test():
             camera.release()
         print("🛑 Webcam test stopped")
 
+def analyze_food_image(image_data):
+    """Yemek görüntüsünü analiz et ve kalori hesapla"""
+    try:
+        # Basit simülasyon - gerçek API entegrasyonu için bu kısmı değiştirin
+        print("🍽️ Yemek analizi yapılıyor...")
+        
+        # Rastgele yemek seçimi (demo için)
+        import random
+        detected_foods = []
+        total_calories = 0
+        
+        # 1-3 arası rastgele yemek tespit et
+        num_foods = random.randint(1, 3)
+        food_names = list(SIMPLE_FOOD_DATABASE.keys())
+        
+        for i in range(num_foods):
+            food_name = random.choice(food_names)
+            food_data = SIMPLE_FOOD_DATABASE[food_name]
+            
+            # Porsiyon miktarında varyasyon
+            portion_variation = random.uniform(0.7, 1.3)
+            actual_portion = food_data['typical_portion'] * portion_variation
+            
+            # Kalori hesaplama
+            calories = (food_data['calories_per_100g'] * actual_portion) / 100
+            
+            detected_foods.append({
+                'name': food_name.title(),
+                'portion_g': round(actual_portion),
+                'calories': round(calories)
+            })
+            
+            total_calories += calories
+        
+        # Güvenilirlik skoru
+        confidence = random.uniform(0.7, 0.95)
+        
+        result = {
+            'detected_foods': detected_foods,
+            'total_calories': round(total_calories),
+            'confidence': confidence,
+            'analysis_method': 'Simulated Analysis'
+        }
+        
+        print(f"✅ Yemek analizi tamamlandı: {total_calories:.0f} kalori")
+        return result
+        
+    except Exception as e:
+        print(f"❌ Yemek analizi hatası: {e}")
+        return {
+            'detected_foods': [],
+            'total_calories': 0,
+            'confidence': 0,
+            'error': str(e)
+        }
+
+def capture_food_photo():
+    """Yemek fotoğrafı çek ve analiz et"""
+    global food_capture_active, camera, realsense_pipeline, camera_mode
+    
+    try:
+        food_capture_active = True
+        
+        # 3 saniye geri sayım
+        for i in range(3, 0, -1):
+            if not food_capture_active:
+                return
+            socketio.emit('food_capture_countdown', {'count': i})
+            socketio.sleep(1)
+        
+        socketio.emit('food_capture_started')
+        
+        # Kamera türünü tespit et
+        if not detect_camera_type():
+            socketio.emit('food_analysis_error', {'message': 'Kamera bulunamadı'})
+            return
+        
+        captured_frame = None
+        
+        if camera_mode == "realsense":
+            # RealSense ile fotoğraf çek
+            try:
+                temp_pipeline = rs.pipeline()
+                config = rs.config()
+                config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+                
+                temp_pipeline.start(config)
+                
+                # Birkaç frame bekle (kamera stabilize olsun)
+                for _ in range(10):
+                    frames = temp_pipeline.wait_for_frames()
+                
+                # Son frame'i al
+                frames = temp_pipeline.wait_for_frames()
+                color_frame = frames.get_color_frame()
+                
+                if color_frame:
+                    captured_frame = np.asanyarray(color_frame.get_data())
+                    captured_frame = cv2.flip(captured_frame, 1)
+                
+                temp_pipeline.stop()
+                
+            except Exception as e:
+                print(f"RealSense fotoğraf çekme hatası: {e}")
+        
+        else:
+            # Webcam ile fotoğraf çek
+            try:
+                working_cameras = [4, 6, 2, 0, 1]
+                working_camera_index = None
+                
+                for camera_index in working_cameras:
+                    test_cap = cv2.VideoCapture(camera_index)
+                    if test_cap.isOpened():
+                        ret, frame = test_cap.read()
+                        if ret and frame is not None:
+                            working_camera_index = camera_index
+                            test_cap.release()
+                            break
+                        test_cap.release()
+                
+                if working_camera_index is not None:
+                    temp_camera = cv2.VideoCapture(working_camera_index)
+                    temp_camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                    temp_camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                    
+                    # Birkaç frame bekle
+                    for _ in range(10):
+                        ret, frame = temp_camera.read()
+                    
+                    # Son frame'i al
+                    ret, frame = temp_camera.read()
+                    if ret:
+                        captured_frame = cv2.flip(frame, 1)
+                    
+                    temp_camera.release()
+                
+            except Exception as e:
+                print(f"Webcam fotoğraf çekme hatası: {e}")
+        
+        if captured_frame is None:
+            socketio.emit('food_analysis_error', {'message': 'Fotoğraf çekilemedi'})
+            return
+        
+        # Fotoğrafı base64'e çevir
+        _, buffer = cv2.imencode('.jpg', captured_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        # Analiz başlat
+        socketio.emit('food_analysis_started')
+        
+        # Yemek analizini yap
+        analysis_result = analyze_food_image(captured_frame)
+        
+        # Sonucu gönder
+        socketio.emit('food_analysis_result', {
+            'image': img_base64,
+            'analysis': analysis_result
+        })
+        
+        print(f"✅ Yemek fotoğrafı analizi tamamlandı")
+        
+    except Exception as e:
+        print(f"❌ Yemek fotoğrafı çekme hatası: {e}")
+        socketio.emit('food_analysis_error', {'message': f'Hata: {str(e)}'})
+    
+    finally:
+        food_capture_active = False
+
 def heartbeat_monitor():
     """Background heartbeat to keep connections alive"""
     global heartbeat_active
@@ -1731,6 +1926,7 @@ def handle_start_test(data):
 @socketio.on('stop_test')
 def handle_stop_test(data):
     global test_running
+    global food_capture_active
     try:
         test_running = False
         safe_emit('test_stopped')
@@ -1766,8 +1962,16 @@ def handle_check_connection():
     """Connection check handler - parametre gerektirmez"""
     try:
         safe_emit('connection_ok', {'status': 'ok', 'timestamp': time.time()})
+    food_capture_active = False
     except Exception as e:
         print(f"❌ Connection check hatası: {e}")
+
+@socketio.on('take_food_photo')
+def handle_take_food_photo(data):
+    global food_capture_active, food_capture_thread
+    if not food_capture_active and not test_running:
+        food_capture_thread = socketio.start_background_task(target=capture_food_photo)
+        print("📸 Yemek fotoğrafı çekme başlatıldı")
 
 if __name__ == '__main__':
     print("🚀 Starting Test-Based Body Analysis System...")
@@ -1776,6 +1980,7 @@ if __name__ == '__main__':
     print("   - Otomatik kamera algılama")
     print("   - Vücut tipi analizi")
     print("   - Sol ekranda ölçüm verileri")
+    print("   - Yemek fotoğrafı ile kalori hesaplama")
     print("   - RGB görüntü al")
     print("   - Gelişmiş omuz algılama")
     print("   - Kararlı WebSocket bağlantısı")
