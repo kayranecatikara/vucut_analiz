@@ -404,12 +404,14 @@ def load_movenet_model():
                 print(f"⏳ {retry_delay} saniye bekleyip tekrar denenecek...")
                 time.sleep(retry_delay)
             else:
-            print("💡 Çözüm önerileri:")
-            print("   1. İnternet bağlantınızı kontrol edin")
-            print("   2. VPN kullanıyorsanız kapatmayı deneyin")
-            print("   3. Firewall ayarlarını kontrol edin")
-            print("   4. Birkaç dakika sonra tekrar deneyin")
-            print("   5. python download_model.py komutunu çalıştırın")
+                print("❌ Model yüklenemedi. Lütfen internet bağlantınızı kontrol edin.")
+                print("💡 Çözüm önerileri:")
+                print("   1. İnternet bağlantınızı kontrol edin")
+                print("   2. VPN kullanıyorsanız kapatmayı deneyin")
+                print("   3. Firewall ayarlarını kontrol edin")
+                print("   4. Birkaç dakika sonra tekrar deneyin")
+                print("   5. python download_model.py komutunu çalıştırın")
+                return False
 
 def analyze_food_demo(image_data):
     """Demo yemek analizi (API olmadığında)"""
@@ -2538,15 +2540,16 @@ def handle_stop_test(data):
     try:
         test_running = False
         safe_emit('test_stopped')
+        print("🛑 Test durduruldu")
+    except Exception as e:
+        print(f"❌ Test durdurma hatası: {e}")
+
 @socketio.on('take_food_photo')
 def handle_take_food_photo(data):
     """Yemek fotoğrafı çekme isteği"""
     if not test_running:  # Test çalışmıyorsa fotoğraf çekebilir
         socketio.start_background_task(target=take_food_photo)
         print("📸 Yemek fotoğrafı çekiliyor")
-        print("🛑 Test durduruldu")
-    except Exception as e:
-        print(f"❌ Test durdurma hatası: {e}")
 
 @socketio.on('take_food_photo')
 def handle_take_food_photo(data=None):
