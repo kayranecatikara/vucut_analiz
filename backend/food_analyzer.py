@@ -137,6 +137,23 @@ class FoodAnalyzer:
             # Görüntüyü base64'e çevir
             image_base64 = base64.b64encode(image_data).decode('utf-8')
             
+            # Önce yerel görüntü analizi yap
+            local_analysis = self._analyze_image_locally(image_data)
+            print(f"🔍 Yerel analiz sonucu: {local_analysis}")
+            
+            # Eğer yerel analiz güvenilirse, API'yi atlayabiliriz
+            if local_analysis['confidence'] > 0.7:
+                print("✅ Yerel analiz yeterince güvenilir, API atlanıyor")
+                return {
+                    'success': True,
+                    'detected_foods': [local_analysis],
+                    'total_calories': local_analysis['calories'],
+                    'confidence': local_analysis['confidence'],
+                    'image': image_base64,
+                    'analysis_time': time.time(),
+                    'api_used': 'Local Analysis'
+                }
+            
             # LogMeal API'ya gönderilecek veri
             data = {
                 "image": image_base64
@@ -157,14 +174,134 @@ class FoodAnalyzer:
             if response.status_code == 200:
                 result = response.json()
                 print(f"✅ API başarılı: {result}")
-                return self._process_logmeal_results(result, image_base64)
+                processed_result = self._process_logmeal_results(result, image_base64)
+                
+                # API sonucu güvenilir değilse yerel analizi kullan
+                if processed_result['confidence'] < 0.5 and local_analysis['confidence'] > 0.4:
+                    print("⚠️ API sonucu güvenilir değil, yerel analiz kullanılıyor")
+                    return {
+                        'success': True,
+                        'detected_foods': [local_analysis],
+                        'total_calories': local_analysis['calories'],
+                        'confidence': local_analysis['confidence'],
+                        'image': image_base64,
+                        'analysis_time': time.time(),
+                        'api_used': 'Local Analysis (API Fallback)'
+                    }
+                
+                return processed_result
             else:
                 print(f"❌ API Hatası: {response.status_code} - {response.text}")
-                return self._create_smart_fallback_result(image_base64)
+                return self._create_smart_fallback_result(image_base64, local_analysis)
                 
         except Exception as e:
             print(f"❌ Yemek analizi hatası: {e}")
-            return self._create_smart_fallback_result(image_base64)
+            return self._create_smart_fallback_result(image_base64, None)
+    
+    def _analyze_image_locally(self, image_data: bytes) -> Dict[str, Any]:
+        """
+        Yerel görüntü analizi - renk, şekil ve doku analizi
+        """
+        try:
+            from PIL import Image, ImageStat
+            import io
+            import numpy as np
+            
+            # Görüntüyü aç
+            image = Image.open(io.BytesIO(image_data))
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Görüntü istatistikleri
+            stat = ImageStat.Stat(image)
+            avg_colors = stat.mean  # [R, G, B]
+            
+            # Görüntüyü numpy array'e çevir
+            img_array = np.array(image.resize((100, 100)))
+            
+            # Renk analizi
+            r_avg, g_avg, b_avg = avg_colors
+            
+            print(f"🎨 Ortalama renkler - R: {r_avg:.1f}, G: {g_avg:.1f}, B: {b_avg:.1f}")
+            
+            # Gelişmiş yemek tanıma
+            confidence = 0.3  # Başlangıç güveni
+            
+            # Kırmızı meyveler (elma, domates, çilek)
+            if r_avg > 120 and r_avg > g_avg + 30 and r_avg > b_avg + 30:
+                if g_avg < 80:  # Koyu kırmızı
+                    food_name = "Elma"
+                    calories = 80
+                    confidence = 0.8
+                else:  # Açık kırmızı
+                    food_name = "Domates"
+                    calories = 25
+                    confidence = 0.7
+            
+            # Yeşil sebzeler
+            elif g_avg > 100 and g_avg > r_avg + 20 and g_avg > b_avg + 20:
+                food_name = "Yeşil Sebze"
+                calories = 50
+                confidence = 0.6
+            
+            # Sarı/turuncu meyveler (muz, portakal)
+            elif r_avg > 150 and g_avg > 120 and b_avg < 100:
+                if r_avg > g_avg:
+                    food_name = "Portakal"
+                    calories = 60
+                    confidence = 0.7
+                else:
+                    food_name = "Muz"
+                    calories = 90
+                    confidence = 0.7
+            
+            # Kahverengi yemekler (et, ekmek)
+            elif 80 < r_avg < 150 and 60 < g_avg < 120 and 40 < b_avg < 100:
+                # Daha koyu kahverengi - et
+                if r_avg > 100 and g_avg < 90:
+                    food_name = "Et Yemeği"
+                    calories = 300
+                    confidence = 0.5
+                else:
+                    food_name = "Ekmek"
+                    calories = 200
+                    confidence = 0.5
+            
+            # Beyaz/açık renkler (pirinç, makarna, süt ürünleri)
+            elif r_avg > 180 and g_avg > 180 and b_avg > 180:
+                food_name = "Pirinç/Makarna"
+                calories = 180
+                confidence = 0.4
+            
+            # Koyu renkler (çikolata, kahve)
+            elif r_avg < 80 and g_avg < 80 and b_avg < 80:
+                food_name = "Çikolata"
+                calories = 400
+                confidence = 0.5
+            
+            # Varsayılan
+            else:
+                food_name = "Karışık Yemek"
+                calories = 200
+                confidence = 0.3
+            
+            print(f"🔍 Yerel analiz: {food_name} ({confidence:.1f} güven, {calories} kcal)")
+            
+            return {
+                'name': food_name,
+                'confidence': confidence,
+                'calories': calories,
+                'analysis_method': 'color_analysis'
+            }
+            
+        except Exception as e:
+            print(f"❌ Yerel analiz hatası: {e}")
+            return {
+                'name': 'Bilinmeyen Yemek',
+                'confidence': 0.2,
+                'calories': 150,
+                'analysis_method': 'fallback'
+            }
     
     def _process_logmeal_results(self, api_result: Dict, image_base64: str) -> Dict[str, Any]:
         """
@@ -226,7 +363,7 @@ class FoodAnalyzer:
             # Eğer hiç yemek tespit edilmediyse akıllı varsayılan
             if not detected_foods:
                 print("⚠️ Hiç yemek tespit edilemedi, fallback kullanılıyor")
-                return self._create_smart_fallback_result(image_base64)
+                return self._create_smart_fallback_result(image_base64, None)
             
             avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.5
             
@@ -244,7 +381,7 @@ class FoodAnalyzer:
             
         except Exception as e:
             print(f"❌ LogMeal sonuç işleme hatası: {e}")
-            return self._create_smart_fallback_result(image_base64)
+            return self._create_smart_fallback_result(image_base64, None)
     
     def _calculate_calories(self, food_name: str) -> int:
         """
@@ -373,49 +510,15 @@ class FoodAnalyzer:
         # Bulunamazsa başlık formatında döndür
         return food_name.title()
     
-    def _create_smart_fallback_result(self, image_base64: str) -> Dict[str, Any]:
+    def _create_smart_fallback_result(self, image_base64: str, local_analysis: Dict = None) -> Dict[str, Any]:
         """
         API başarısız olduğunda akıllı varsayılan sonuç oluştur
         """
-        # Basit görüntü analizi ile daha akıllı tahmin
-        try:
-            # Base64'ü decode et ve basit renk analizi yap
-            import base64
-            from PIL import Image
-            import io
-            
-            image_data = base64.b64decode(image_base64)
-            image = Image.open(io.BytesIO(image_data))
-            
-            # Görüntüyü küçült ve renk analizi yap
-            image = image.resize((100, 100))
-            pixels = list(image.getdata())
-            
-            # Ortalama renk hesapla
-            avg_r = sum(p[0] for p in pixels) / len(pixels)
-            avg_g = sum(p[1] for p in pixels) / len(pixels)
-            avg_b = sum(p[2] for p in pixels) / len(pixels)
-            
-            # Renk bazlı tahmin
-            if avg_r > 150 and avg_g < 100 and avg_b < 100:
-                # Kırmızı tonları - elma, domates, kırmızı biber
-                selected_food = {'name': 'Elma', 'confidence': 0.6, 'calories': 80}
-            elif avg_g > 120 and avg_r < 100:
-                # Yeşil tonları - sebze
-                selected_food = {'name': 'Yeşil Sebze', 'confidence': 0.5, 'calories': 50}
-            elif avg_r > 200 and avg_g > 150 and avg_b < 100:
-                # Sarı/turuncu tonları - muz, portakal
-                selected_food = {'name': 'Meyve', 'confidence': 0.5, 'calories': 70}
-            elif avg_r > 100 and avg_g > 80 and avg_b > 60:
-                # Kahverengi tonları - et, ekmek
-                selected_food = {'name': 'Ana Yemek', 'confidence': 0.4, 'calories': 250}
-            else:
-                # Varsayılan
-                selected_food = {'name': 'Bilinmeyen Yemek', 'confidence': 0.3, 'calories': 150}
-                
-        except Exception as e:
-            print(f"Renk analizi hatası: {e}")
-            # Hata durumunda güvenli varsayılan
+        # Yerel analiz varsa onu kullan
+        if local_analysis:
+            selected_food = local_analysis
+        else:
+            # Yerel analiz yoksa basit varsayılan
             selected_food = {'name': 'Bilinmeyen Yemek', 'confidence': 0.3, 'calories': 150}
         
         return {
@@ -426,7 +529,7 @@ class FoodAnalyzer:
             'image': image_base64,
             'analysis_time': time.time(),
             'api_used': 'Fallback',
-            'note': 'API analizi başarısız, renk bazlı tahmin kullanıldı'
+            'note': 'API analizi başarısız, yerel analiz kullanıldı'
         }
 
 # Test fonksiyonu
