@@ -1368,7 +1368,7 @@ def run_realsense_test():
                 color_image = cv2.flip(color_image, 1)
                 
                 # Parlaklık ve kontrast filtreleri uygula
-                color_image = cv2.convertScaleAbs(color_image, alpha=1.3, beta=30)
+                color_image = cv2.convertScaleAbs(color_image, alpha=1.8, beta=70)
                 
                 # Histogram eşitleme (parlaklığı dengeler)
                 lab = cv2.cvtColor(color_image, cv2.COLOR_BGR2LAB)
