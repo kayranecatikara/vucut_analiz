@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-Test Tabanlı Vücut Analizi Sistemi - Gelişmiş Diyet Önerileri
+Test Tabanlı Vücut Analizi Sistemi - Gelişmiş Model Yükleme
 - Teste başla butonuna basıldıktan sonra 10 saniye analiz
 - Analiz sonunda kamera kapanır
-- Detaylı vücut tipine göre diyet önerileri
-- Haftalık yemek planı
-- RGB Fotoğraf Yakalama (Kalori Hesaplama için)
+- Vücut tipine göre diyet önerileri
+- Gelişmiş model yükleme ve hata yönetimi
 """
 
 import eventlet
@@ -99,6 +98,11 @@ def load_movenet_model():
                 time.sleep(retry_delay)
             else:
                 print("❌ Model yüklenemedi. Lütfen internet bağlantınızı kontrol edin.")
+                print("💡 Çözüm önerileri:")
+                print("   1. İnternet bağlantınızı kontrol edin")
+                print("   2. VPN kullanıyorsanız kapatmayı deneyin")
+                print("   3. Firewall ayarlarını kontrol edin")
+                print("   4. Birkaç dakika sonra tekrar deneyin")
                 return False
     
     return False
@@ -110,23 +114,19 @@ if not load_movenet_model():
 
 INPUT_SIZE = 192
 
-# --- Gelişmiş Diyet Önerileri Veritabanı ---
+# --- Diyet Önerileri Veritabanı ---
 DIYET_ONERILERI = {
     'Ektomorf': {
         'ozellikler': [
             'İnce yapılı ve hızlı metabolizma',
             'Kilo almakta zorlanır',
-            'Kas yapmak için daha fazla kalori gerekir',
-            'Doğal olarak düşük vücut yağ oranı',
-            'Uzun ve ince kemik yapısı'
+            'Kas yapmak için daha fazla kalori gerekir'
         ],
         'beslenme_ilkeleri': [
             'Yüksek kalori alımı (günde 2500-3000 kalori)',
             'Karbonhidrat ağırlıklı beslenme (%50-60)',
             'Protein alımı (vücut ağırlığının kg başına 1.5-2g)',
-            'Sağlıklı yağlar (%20-30)',
-            'Sık öğün tüketimi (6-8 öğün/gün)',
-            'Antrenman öncesi ve sonrası beslenmeye dikkat'
+            'Sağlıklı yağlar (%20-30)'
         ],
         'onerilen_besinler': [
             'Tam tahıl ekmek ve makarna',
@@ -135,105 +135,34 @@ DIYET_ONERILERI = {
             'Fındık, badem, ceviz',
             'Avokado, zeytinyağı',
             'Muz, hurma, kuru meyve',
-            'Süt, yoğurt, peynir',
-            'Protein tozu ve gainers',
-            'Tatlı patates, yulaf'
+            'Süt, yoğurt, peynir'
         ],
         'kacinilmasi_gerekenler': [
             'Aşırı işlenmiş gıdalar',
             'Şekerli içecekler',
             'Trans yağlar',
-            'Aşırı kafein',
-            'Boş kalori içeren atıştırmalıklar'
+            'Aşırı kafein'
         ],
         'ogun_plani': {
-            'pazartesi': {
-                'kahvalti': 'Yulaf ezmesi + muz + fındık + süt + bal',
-                'ara_ogun_1': 'Tam tahıl kraker + peynir + ceviz',
-                'ogle': 'Tavuk + pirinç + salata + zeytinyağı + avokado',
-                'ara_ogun_2': 'Protein smoothie + meyve + yoğurt',
-                'aksam': 'Balık + bulgur pilavı + sebze + zeytinyağı',
-                'gece': 'Yoğurt + bal + ceviz + hurma'
-            },
-            'sali': {
-                'kahvalti': 'Omlet + tam tahıl ekmek + avokado + süt',
-                'ara_ogun_1': 'Muz + badem + yoğurt',
-                'ogle': 'Et + quinoa + salata + zeytinyağı',
-                'ara_ogun_2': 'Protein bar + meyve suyu',
-                'aksam': 'Tavuk + tatlı patates + sebze',
-                'gece': 'Süt + bal + hurma'
-            },
-            'carsamba': {
-                'kahvalti': 'Yulaf + meyve + fındık + süt',
-                'ara_ogun_1': 'Peynir + tam tahıl kraker',
-                'ogle': 'Balık + pirinç + salata + avokado',
-                'ara_ogun_2': 'Smoothie + protein tozu',
-                'aksam': 'Et + bulgur + sebze + zeytinyağı',
-                'gece': 'Yoğurt + ceviz + bal'
-            },
-            'persembe': {
-                'kahvalti': 'Omlet + ekmek + domates + peynir',
-                'ara_ogun_1': 'Meyve + badem',
-                'ogle': 'Tavuk + quinoa + salata',
-                'ara_ogun_2': 'Yoğurt + granola',
-                'aksam': 'Balık + pirinç + sebze',
-                'gece': 'Süt + hurma'
-            },
-            'cuma': {
-                'kahvalti': 'Yulaf + meyve + süt + bal',
-                'ara_ogun_1': 'Peynir + ceviz',
-                'ogle': 'Et + bulgur + salata + zeytinyağı',
-                'ara_ogun_2': 'Protein smoothie',
-                'aksam': 'Tavuk + tatlı patates + sebze',
-                'gece': 'Yoğurt + bal + fındık'
-            },
-            'cumartesi': {
-                'kahvalti': 'Omlet + avokado + ekmek + süt',
-                'ara_ogun_1': 'Meyve + badem',
-                'ogle': 'Balık + quinoa + salata',
-                'ara_ogun_2': 'Yoğurt + meyve',
-                'aksam': 'Et + pirinç + sebze + zeytinyağı',
-                'gece': 'Süt + hurma + ceviz'
-            },
-            'pazar': {
-                'kahvalti': 'Yulaf + meyve + fındık + süt',
-                'ara_ogun_1': 'Peynir + tam tahıl kraker',
-                'ogle': 'Tavuk + bulgur + salata + avokado',
-                'ara_ogun_2': 'Protein bar + meyve',
-                'aksam': 'Balık + tatlı patates + sebze',
-                'gece': 'Yoğurt + bal + ceviz'
-            }
-        },
-        'egzersiz_onerileri': [
-            'Ağırlık antrenmanı (3-4 gün/hafta)',
-            'Kısa süreli kardio (15-20 dakika)',
-            'Compound hareketler (squat, deadlift)',
-            'Yüksek ağırlık, düşük tekrar',
-            'Uzun dinlenme süreleri'
-        ],
-        'suplement_onerileri': [
-            'Whey protein',
-            'Creatine',
-            'Mass gainer',
-            'Multivitamin',
-            'Omega-3'
-        ]
+            'kahvalti': 'Yulaf ezmesi + muz + fındık + süt',
+            'ara_ogun_1': 'Tam tahıl kraker + peynir',
+            'ogle': 'Tavuk + pirinç + salata + zeytinyağı',
+            'ara_ogun_2': 'Protein smoothie + meyve',
+            'aksam': 'Balık + bulgur pilavı + sebze',
+            'gece': 'Yoğurt + bal + ceviz'
+        }
     },
     'Mezomorf': {
         'ozellikler': [
             'Atletik yapı ve orta metabolizma',
             'Kas yapma ve yağ yakma dengeli',
-            'Vücut kompozisyonunu korumak kolay',
-            'Doğal kas yapısı iyi',
-            'Orta kemik yapısı'
+            'Vücut kompozisyonunu korumak kolay'
         ],
         'beslenme_ilkeleri': [
             'Dengeli kalori alımı (günde 2000-2500 kalori)',
             'Dengeli makro besin dağılımı',
             'Protein alımı (vücut ağırlığının kg başına 1.2-1.5g)',
-            'Karbonhidrat (%40-45), Yağ (%25-30)',
-            'Düzenli öğün saatleri (5-6 öğün/gün)',
-            'Antrenman periyodizasyonuna uygun beslenme'
+            'Karbonhidrat (%40-45), Yağ (%25-30)'
         ],
         'onerilen_besinler': [
             'Yağsız et, tavuk, balık',
@@ -242,105 +171,34 @@ DIYET_ONERILERI = {
             'Taze meyve ve sebzeler',
             'Bakliyat (mercimek, nohut)',
             'Fındık ve tohum',
-            'Zeytinyağı, balık yağı',
-            'Quinoa, bulgur',
-            'Yeşil yapraklı sebzeler'
+            'Zeytinyağı, balık yağı'
         ],
         'kacinilmasi_gerekenler': [
             'Aşırı kalori alımı',
             'Rafine şeker',
             'İşlenmiş et ürünleri',
-            'Aşırı doymuş yağ',
-            'Alkol'
+            'Aşırı doymuş yağ'
         ],
         'ogun_plani': {
-            'pazartesi': {
-                'kahvalti': 'Omlet + tam tahıl ekmek + domates + zeytinyağı',
-                'ara_ogun_1': 'Elma + badem + yoğurt',
-                'ogle': 'Izgara tavuk + quinoa + yeşil salata + zeytinyağı',
-                'ara_ogun_2': 'Yoğurt + meyve + ceviz',
-                'aksam': 'Balık + tatlı patates + buharda sebze',
-                'gece': 'Az yağlı süt + tarçın + bal'
-            },
-            'sali': {
-                'kahvalti': 'Yulaf + meyve + badem + süt',
-                'ara_ogun_1': 'Peynir + tam tahıl kraker',
-                'ogle': 'Et + bulgur + salata + zeytinyağı',
-                'ara_ogun_2': 'Smoothie + protein',
-                'aksam': 'Tavuk + quinoa + sebze',
-                'gece': 'Yoğurt + tarçın'
-            },
-            'carsamba': {
-                'kahvalti': 'Omlet + avokado + ekmek',
-                'ara_ogun_1': 'Meyve + ceviz',
-                'ogle': 'Balık + pirinç + salata',
-                'ara_ogun_2': 'Yoğurt + meyve',
-                'aksam': 'Et + tatlı patates + sebze',
-                'gece': 'Süt + bal'
-            },
-            'persembe': {
-                'kahvalti': 'Yulaf + meyve + süt',
-                'ara_ogun_1': 'Badem + elma',
-                'ogle': 'Tavuk + bulgur + salata',
-                'ara_ogun_2': 'Peynir + ceviz',
-                'aksam': 'Balık + quinoa + sebze',
-                'gece': 'Yoğurt + tarçın'
-            },
-            'cuma': {
-                'kahvalti': 'Omlet + domates + ekmek',
-                'ara_ogun_1': 'Meyve + badem',
-                'ogle': 'Et + pirinç + salata + zeytinyağı',
-                'ara_ogun_2': 'Yoğurt + meyve',
-                'aksam': 'Tavuk + tatlı patates + sebze',
-                'gece': 'Süt + bal'
-            },
-            'cumartesi': {
-                'kahvalti': 'Yulaf + meyve + fındık + süt',
-                'ara_ogun_1': 'Peynir + tam tahıl kraker',
-                'ogle': 'Balık + bulgur + salata',
-                'ara_ogun_2': 'Smoothie + protein',
-                'aksam': 'Et + quinoa + sebze + zeytinyağı',
-                'gece': 'Yoğurt + ceviz'
-            },
-            'pazar': {
-                'kahvalti': 'Omlet + avokado + ekmek + domates',
-                'ara_ogun_1': 'Meyve + badem',
-                'ogle': 'Tavuk + pirinç + yeşil salata',
-                'ara_ogun_2': 'Yoğurt + meyve + ceviz',
-                'aksam': 'Balık + tatlı patates + sebze',
-                'gece': 'Süt + tarçın + bal'
-            }
-        },
-        'egzersiz_onerileri': [
-            'Karma antrenman programı',
-            'Orta süreli kardio (30-45 dakika)',
-            'Çeşitli spor aktiviteleri',
-            'Functional training',
-            'Esneklik çalışmaları'
-        ],
-        'suplement_onerileri': [
-            'Whey protein',
-            'BCAA',
-            'Multivitamin',
-            'Omega-3',
-            'Magnezyum'
-        ]
+            'kahvalti': 'Omlet + tam tahıl ekmek + domates',
+            'ara_ogun_1': 'Elma + badem',
+            'ogle': 'Izgara tavuk + quinoa + yeşil salata',
+            'ara_ogun_2': 'Yoğurt + meyve',
+            'aksam': 'Balık + tatlı patates + buharda sebze',
+            'gece': 'Az yağlı süt + tarçın'
+        }
     },
     'Endomorf': {
         'ozellikler': [
             'Geniş yapılı ve yavaş metabolizma',
             'Kilo almaya eğilimli',
-            'Yağ yakmak için daha fazla çaba gerekir',
-            'Doğal olarak yüksek vücut yağ oranı',
-            'Geniş kemik yapısı'
+            'Yağ yakmak için daha fazla çaba gerekir'
         ],
         'beslenme_ilkeleri': [
             'Kontrollü kalori alımı (günde 1500-2000 kalori)',
             'Düşük karbonhidrat (%30-35)',
             'Yüksek protein (vücut ağırlığının kg başına 1.5-2g)',
-            'Orta yağ alımı (%25-30)',
-            'Sık ve küçük öğünler (6-7 öğün/gün)',
-            'Glisemik indeksi düşük besinler'
+            'Orta yağ alımı (%25-30)'
         ],
         'onerilen_besinler': [
             'Yağsız protein (tavuk göğsü, balık)',
@@ -349,91 +207,23 @@ DIYET_ONERILERI = {
             'Tam tahıl ürünleri (az miktarda)',
             'Bakliyat ve mercimek',
             'Fındık (kontrollü miktarda)',
-            'Zeytinyağı, avokado',
-            'Brokoli, karnabahar',
-            'Yaban mersini, çilek'
+            'Zeytinyağı, avokado'
         ],
         'kacinilmasi_gerekenler': [
             'Basit karbonhidratlar',
             'Şekerli gıdalar ve içecekler',
             'İşlenmiş gıdalar',
             'Yüksek kalorili atıştırmalıklar',
-            'Beyaz ekmek, pasta',
-            'Alkol',
-            'Geç saatlerde yemek'
+            'Beyaz ekmek, pasta'
         ],
         'ogun_plani': {
-            'pazartesi': {
-                'kahvalti': 'Protein omlet + sebze + az zeytinyağı + yeşil çay',
-                'ara_ogun_1': 'Çiğ badem (10-15 adet) + yeşil elma',
-                'ogle': 'Izgara balık + bol salata + limon + zeytinyağı',
-                'ara_ogun_2': 'Yoğurt (şekersiz) + tarçın + ceviz',
-                'aksam': 'Tavuk + buharda brokoli + bulgur (az)',
-                'gece': 'Bitki çayı + badem (5-6 adet)'
-            },
-            'sali': {
-                'kahvalti': 'Omlet + sebze + yeşil çay',
-                'ara_ogun_1': 'Ceviz + yeşil elma',
-                'ogle': 'Tavuk + salata + zeytinyağı',
-                'ara_ogun_2': 'Yoğurt + tarçın',
-                'aksam': 'Balık + buharda sebze',
-                'gece': 'Bitki çayı'
-            },
-            'carsamba': {
-                'kahvalti': 'Protein omlet + domates + yeşil çay',
-                'ara_ogun_1': 'Badem + çilek',
-                'ogle': 'Et + yeşil salata + limon',
-                'ara_ogun_2': 'Yoğurt + ceviz',
-                'aksam': 'Tavuk + karnabahar + az bulgur',
-                'gece': 'Bitki çayı + badem'
-            },
-            'persembe': {
-                'kahvalti': 'Omlet + sebze + zeytinyağı',
-                'ara_ogun_1': 'Ceviz + yeşil elma',
-                'ogle': 'Balık + bol salata + zeytinyağı',
-                'ara_ogun_2': 'Yoğurt + tarçın',
-                'aksam': 'Tavuk + buharda brokoli',
-                'gece': 'Bitki çayı'
-            },
-            'cuma': {
-                'kahvalti': 'Protein omlet + domates + yeşil çay',
-                'ara_ogun_1': 'Badem + çilek',
-                'ogle': 'Et + salata + limon + zeytinyağı',
-                'ara_ogun_2': 'Yoğurt + ceviz',
-                'aksam': 'Balık + sebze + az bulgur',
-                'gece': 'Bitki çayı + badem'
-            },
-            'cumartesi': {
-                'kahvalti': 'Omlet + sebze + yeşil çay',
-                'ara_ogun_1': 'Ceviz + yeşil elma',
-                'ogle': 'Tavuk + bol salata + zeytinyağı',
-                'ara_ogun_2': 'Yoğurt + tarçın',
-                'aksam': 'Balık + buharda karnabahar',
-                'gece': 'Bitki çayı'
-            },
-            'pazar': {
-                'kahvalti': 'Protein omlet + domates + zeytinyağı',
-                'ara_ogun_1': 'Badem + çilek',
-                'ogle': 'Et + yeşil salata + limon',
-                'ara_ogun_2': 'Yoğurt + ceviz',
-                'aksam': 'Tavuk + buharda sebze + az bulgur',
-                'gece': 'Bitki çayı + badem'
-            }
-        },
-        'egzersiz_onerileri': [
-            'Yoğun kardio (5-6 gün/hafta)',
-            'Yüksek tekrarlı ağırlık antrenmanı',
-            'HIIT (High Intensity Interval Training)',
-            'Aktif yaşam tarzı',
-            'Yürüyüş ve koşu'
-        ],
-        'suplement_onerileri': [
-            'Whey protein',
-            'L-Carnitine',
-            'Green tea extract',
-            'CLA',
-            'Multivitamin'
-        ]
+            'kahvalti': 'Protein omlet + sebze + az zeytinyağı',
+            'ara_ogun_1': 'Çiğ badem (10-15 adet)',
+            'ogle': 'Izgara balık + bol salata + limon',
+            'ara_ogun_2': 'Yoğurt (şekersiz) + tarçın',
+            'aksam': 'Tavuk + buharda brokoli + bulgur (az)',
+            'gece': 'Bitki çayı'
+        }
     }
 }
 
@@ -454,7 +244,7 @@ def run_movenet(input_image: np.ndarray) -> np.ndarray:
     """Run MoveNet model on input image and return keypoints"""
     if movenet is None:
         print("❌ Model yüklenmemiş!")
-        return np.zeros((17, 3))
+        return np.zeros((17, 3))  # Boş keypoints döndür
         
     img_resized = tf.image.resize_with_pad(np.expand_dims(input_image, axis=0), INPUT_SIZE, INPUT_SIZE)
     input_tensor = tf.cast(img_resized, dtype=tf.int32)
@@ -464,7 +254,7 @@ def run_movenet(input_image: np.ndarray) -> np.ndarray:
         return outputs['output_0'].numpy()[0, 0]
     except Exception as e:
         print(f"❌ Model çalıştırma hatası: {e}")
-        return np.zeros((17, 3))
+        return np.zeros((17, 3))  # Boş keypoints döndür
 
 def calculate_pixel_distance(p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
     """Calculate pixel distance between two points"""
@@ -683,7 +473,7 @@ def draw_pose_and_measurements(frame: np.ndarray, keypoints: np.ndarray,
             pt2 = (int(rs_x * width), int(rs_y * height))
             cv2.line(frame, pt1, pt2, (255, 0, 255), 4)  # Kalın mor çizgi
             
-            if analysis_data.get('omuz_genisligi', 0) > 0:
+            if analysis_data['omuz_genisligi'] > 0:
                 mid_x = int((pt1[0] + pt2[0]) / 2)
                 mid_y = int((pt1[1] + pt2[1]) / 2) - 15
                 cv2.putText(frame, f"{analysis_data['omuz_genisligi']:.1f}cm", 
@@ -695,7 +485,7 @@ def draw_pose_and_measurements(frame: np.ndarray, keypoints: np.ndarray,
             pt2 = (int(rh_x * width), int(rh_y * height))
             cv2.line(frame, pt1, pt2, (255, 255, 0), 4)  # Kalın cyan çizgi
             
-            if analysis_data.get('bel_genisligi', 0) > 0:
+            if analysis_data['bel_genisligi'] > 0:
                 mid_x = int((pt1[0] + pt2[0]) / 2)
                 mid_y = int((pt1[1] + pt2[1]) / 2) + 25
                 cv2.putText(frame, f"{analysis_data['bel_genisligi']:.1f}cm", 
@@ -1014,7 +804,95 @@ def run_webcam_test():
             camera.release()
         print("🛑 Webcam test stopped")
 
-# --- RGB Fotoğraf Yakalama Fonksiyonları (YENİ) ---
+# --- SocketIO Events ---
+@socketio.on('connect')
+def handle_connect(auth):
+    print("✅ WebSocket connection established!")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    global test_running
+    test_running = False
+    print("❌ WebSocket connection closed!")
+
+@socketio.on('start_test')
+def handle_start_test(data):
+    global test_running, test_thread
+    if not test_running:
+        test_running = True
+        test_thread = socketio.start_background_task(target=run_body_analysis_test)
+        print("🚀 Vücut analizi testi başlatıldı")
+
+@socketio.on('stop_test')
+def handle_stop_test(data):
+    global test_running
+    test_running = False
+    socketio.emit('test_stopped')
+    print("🛑 Test durduruldu")
+
+@socketio.on('take_food_photo')
+def handle_take_food_photo(data):
+    """Yemek fotoğrafı çekme işlemi - RGB görüntü"""
+    global camera_mode
+    
+    try:
+        print("📸 Yemek fotoğrafı çekiliyor...")
+        
+        # Geri sayım başlat
+        for i in range(3, 0, -1):
+            socketio.emit('food_capture_countdown', {'count': i})
+            socketio.sleep(1)
+        
+        # Fotoğraf çekme başladı
+        socketio.emit('food_capture_started')
+        socketio.sleep(0.5)
+        
+        # Kamera tipini belirle
+        if not detect_camera_type():
+            socketio.emit('food_analysis_error', {'message': 'Kamera bulunamadı'})
+            return
+        
+        rgb_image = None
+        
+        if camera_mode == "realsense":
+            rgb_image = capture_rgb_image_realsense()
+        else:
+            rgb_image = capture_rgb_image_webcam()
+        
+        if rgb_image is None:
+            socketio.emit('food_analysis_error', {'message': 'Fotoğraf çekilemedi'})
+            return
+        
+        # Analiz başladı
+        socketio.emit('food_analysis_started')
+        socketio.sleep(1)
+        
+        # RGB görüntüyü base64'e çevir
+        _, buffer = cv2.imencode('.jpg', rgb_image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        # Örnek yemek analizi sonuçları (gerçek AI modeli entegre edilene kadar)
+        analysis_results = {
+            'total_calories': 285,
+            'confidence': 0.87,
+            'detected_foods': [
+                {'name': 'Tavuk Göğsü (150g)', 'calories': 165},
+                {'name': 'Pirinç Pilavı (1 porsiyon)', 'calories': 85},
+                {'name': 'Salata (1 porsiyon)', 'calories': 35}
+            ]
+        }
+        
+        # Sonuçları gönder
+        socketio.emit('food_analysis_result', {
+            'image': img_base64,
+            'analysis': analysis_results
+        })
+        
+        print("✅ Yemek fotoğrafı analizi tamamlandı")
+        
+    except Exception as e:
+        print(f"❌ Yemek fotoğrafı hatası: {e}")
+        socketio.emit('food_analysis_error', {'message': str(e)})
 
 def capture_rgb_image_realsense():
     """RealSense kameradan RGB görüntü yakala"""
@@ -1116,106 +994,15 @@ def capture_rgb_image_webcam():
             cap.release()
             print("🛑 Webcam RGB yakalama durduruldu")
 
-# --- SocketIO Events ---
-@socketio.on('connect')
-def handle_connect(auth):
-    print("✅ WebSocket connection established!")
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    global test_running
-    test_running = False
-    print("❌ WebSocket connection closed!")
-
-@socketio.on('start_test')
-def handle_start_test(data):
-    global test_running, test_thread
-    if not test_running:
-        test_running = True
-        test_thread = socketio.start_background_task(target=run_body_analysis_test)
-        print("🚀 Vücut analizi testi başlatıldı")
-
-@socketio.on('stop_test')
-def handle_stop_test(data):
-    global test_running
-    test_running = False
-    socketio.emit('test_stopped')
-    print("🛑 Test durduruldu")
-
-@socketio.on('take_food_photo')
-def handle_take_food_photo(data):
-    """Yemek fotoğrafı çekme işlemi - RGB görüntü"""
-    global camera_mode
-    
-    try:
-        print("📸 Yemek fotoğrafı çekiliyor...")
-        
-        # Geri sayım başlat
-        for i in range(3, 0, -1):
-            socketio.emit('food_capture_countdown', {'count': i})
-            socketio.sleep(1)
-        
-        # Fotoğraf çekme başladı
-        socketio.emit('food_capture_started')
-        socketio.sleep(0.5)
-        
-        # Kamera tipini belirle
-        if not detect_camera_type():
-            socketio.emit('food_analysis_error', {'message': 'Kamera bulunamadı'})
-            return
-        
-        rgb_image = None
-        
-        if camera_mode == "realsense":
-            rgb_image = capture_rgb_image_realsense()
-        else:
-            rgb_image = capture_rgb_image_webcam()
-        
-        if rgb_image is None:
-            socketio.emit('food_analysis_error', {'message': 'Fotoğraf çekilemedi'})
-            return
-        
-        # Analiz başladı
-        socketio.emit('food_analysis_started')
-        socketio.sleep(1)
-        
-        # RGB görüntüyü base64'e çevir
-        _, buffer = cv2.imencode('.jpg', rgb_image, [cv2.IMWRITE_JPEG_QUALITY, 95])
-        img_base64 = base64.b64encode(buffer).decode('utf-8')
-        
-        # Örnek yemek analizi sonuçları (gerçek AI modeli entegre edilene kadar)
-        analysis_results = {
-            'total_calories': 285,
-            'confidence': 0.87,
-            'detected_foods': [
-                {'name': 'Tavuk Göğsü (150g)', 'calories': 165},
-                {'name': 'Pirinç Pilavı (1 porsiyon)', 'calories': 85},
-                {'name': 'Salata (1 porsiyon)', 'calories': 35}
-            ]
-        }
-        
-        # Sonuçları gönder
-        socketio.emit('food_analysis_result', {
-            'image': img_base64,
-            'analysis': analysis_results
-        })
-        
-        print("✅ Yemek fotoğrafı analizi tamamlandı")
-        
-    except Exception as e:
-        print(f"❌ Yemek fotoğrafı hatası: {e}")
-        socketio.emit('food_analysis_error', {'message': str(e)})
-
 if __name__ == '__main__':
-    print("🚀 Starting Enhanced Test-Based Body Analysis System...")
+    print("🚀 Starting Test-Based Body Analysis System...")
     print("📋 Features:")
     print("   - 10 saniye test süresi")
     print("   - Otomatik kamera algılama")
-    print("   - Detaylı vücut tipi analizi")
-    print("   - Haftalık yemek planı")
-    print("   - Egzersiz ve supplement önerileri")
+    print("   - Vücut tipi analizi")
+    print("   - Kişiselleştirilmiş diyet önerileri")
     print("   - Test sonunda kamera kapanır")
-    print("   - RGB Fotoğraf yakalama (Kalori hesaplama)")
+    print("   - Gelişmiş model yükleme")
     print()
     
     if REALSENSE_AVAILABLE:
