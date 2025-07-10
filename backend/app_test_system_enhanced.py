@@ -524,37 +524,66 @@ def draw_pose_and_measurements(frame: np.ndarray, keypoints: np.ndarray,
         lh_y, lh_x, lh_c = keypoints[KEYPOINT_DICT['left_hip']]
         rh_y, rh_x, rh_c = keypoints[KEYPOINT_DICT['right_hip']]
         
-        # Shoulder measurement line
+        # OMUZ ÇİZGİSİ - KALINCA MOR ÇİZGİ
         if ls_c > 0.3 and rs_c > 0.3:
             pt1 = (int(ls_x * width), int(ls_y * height))
-            pt2 = (int(rs_x * width), int(rs_y * height))
-            cv2.line(frame, pt1, pt2, (255, 0, 255), 4)  # Kalın mor çizgi
+            # KALINCA MOR ÇİZGİ - OMUZ
+            cv2.line(frame, pt1, pt2, (255, 0, 255), 8)  # ÇOK KALIN MOR ÇİZGİ
+            # OMUZ ÖLÇÜMÜ YAZISI - BÜYÜK VE NET
+            mid_x = int((pt1[0] + pt2[0]) / 2)
+            mid_y = int((pt1[1] + pt2[1]) / 2) - 25
             
-            if analysis_data.get('omuz_genisligi', 0) > 0:
-                mid_x = int((pt1[0] + pt2[0]) / 2)
-                mid_y = int((pt1[1] + pt2[1]) / 2) - 15
-                cv2.putText(frame, f"{analysis_data['omuz_genisligi']:.1f}cm", 
-                           (mid_x - 40, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
+            # Arka plan kutusu
+            cv2.rectangle(frame, (mid_x - 60, mid_y - 20), (mid_x + 60, mid_y + 5), (0, 0, 0), -1)
+            cv2.putText(frame, f"OMUZ: {analysis_data.get('omuz_genisligi', 0):.1f}cm", 
+                       (mid_x - 55, mid_y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
         
-        # Hip measurement line
+        # BEL ÇİZGİSİ - KALINCA CYAN ÇİZGİ
         if lh_c > 0.3 and rh_c > 0.3:
             pt1 = (int(lh_x * width), int(lh_y * height))
-            pt2 = (int(rh_x * width), int(rh_y * height))
-            cv2.line(frame, pt1, pt2, (255, 255, 0), 4)  # Kalın cyan çizgi
+            # KALINCA CYAN ÇİZGİ - BEL
+            cv2.line(frame, pt1, pt2, (255, 255, 0), 8)  # ÇOK KALIN CYAN ÇİZGİ
+            # BEL ÖLÇÜMÜ YAZISI - BÜYÜK VE NET
+            mid_x = int((pt1[0] + pt2[0]) / 2)
+            mid_y = int((pt1[1] + pt2[1]) / 2) + 35
             
-            if analysis_data.get('bel_genisligi', 0) > 0:
-                mid_x = int((pt1[0] + pt2[0]) / 2)
-                mid_y = int((pt1[1] + pt2[1]) / 2) + 25
-                cv2.putText(frame, f"{analysis_data['bel_genisligi']:.1f}cm", 
-                           (mid_x - 40, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+            # Arka plan kutusu
+            cv2.rectangle(frame, (mid_x - 60, mid_y - 20), (mid_x + 60, mid_y + 5), (0, 0, 0), -1)
+            cv2.putText(frame, f"BEL: {analysis_data.get('bel_genisligi', 0):.1f}cm", 
+                       (mid_x - 55, mid_y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+        
+        # SOL ÜST KÖŞEDE BÜYÜK BİLGİLER
+        y_pos = 40
+        
+        # Arka plan kutuları
+        cv2.rectangle(frame, (10, 10), (350, 180), (0, 0, 0), -1)
+        cv2.rectangle(frame, (10, 10), (350, 180), (255, 255, 255), 2)
         
         # Test countdown
-        cv2.putText(frame, f"Test Suresi: {test_time_left}s", 
-                   (10, height - 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+        cv2.putText(frame, f"KALAN SURE: {test_time_left}s", 
+                   (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        y_pos += 30
+        
+        # Ölçümler
+        cv2.putText(frame, f"OMUZ: {analysis_data.get('omuz_genisligi', 0):.1f} cm", 
+                   (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2)
+        y_pos += 25
+        
+        cv2.putText(frame, f"BEL: {analysis_data.get('bel_genisligi', 0):.1f} cm", 
+                   (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+        y_pos += 25
+        
+        cv2.putText(frame, f"TIP: {analysis_data.get('vucut_tipi', 'Analiz...')}", 
+                   (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        y_pos += 25
+        
+        if analysis_data.get('omuz_bel_orani', 0) > 0:
+            cv2.putText(frame, f"ORAN: {analysis_data['omuz_bel_orani']:.2f}", 
+                       (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
         
         # Analysis count
-        cv2.putText(frame, f"Analiz Sayisi: {len(analysis_results)}", 
-                   (10, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        cv2.putText(frame, f"Analiz: {len(analysis_results)}", 
+                   (20, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
     except Exception as e:
         print(f"❌ Çizim hatası: {e}")
