@@ -844,7 +844,7 @@ def handle_take_food_photo(data):
 
 def capture_food_photo():
     """RGB fotoğraf çekme işlemi"""
-    global camera_mode, camera, realsense_pipeline
+    global camera_mode
     
     try:
         # 3 saniye geri sayım
@@ -901,26 +901,26 @@ def capture_food_photo():
 
 def capture_realsense_photo():
     """RealSense kameradan RGB fotoğraf çek"""
-    global realsense_pipeline
+    temp_pipeline = None
     
     try:
         # RealSense pipeline başlat
-        realsense_pipeline = rs.pipeline()
+        temp_pipeline = rs.pipeline()
         config = rs.config()
         config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
         
-        profile = realsense_pipeline.start(config)
+        profile = temp_pipeline.start(config)
         print("📹 RealSense kamera başlatıldı (fotoğraf için)")
         
         # Kameranın oturması için birkaç frame atla
         for i in range(10):
-            frames = realsense_pipeline.wait_for_frames(timeout_ms=1000)
+            frames = temp_pipeline.wait_for_frames(timeout_ms=1000)
             color_frame = frames.get_color_frame()
             if not color_frame:
                 continue
         
         # Son RGB frame'i al
-        frames = realsense_pipeline.wait_for_frames(timeout_ms=1000)
+        frames = temp_pipeline.wait_for_frames(timeout_ms=1000)
         color_frame = frames.get_color_frame()
         
         if not color_frame:
@@ -938,13 +938,13 @@ def capture_realsense_photo():
         return None
     
     finally:
-        if realsense_pipeline:
-            realsense_pipeline.stop()
+        if temp_pipeline:
+            temp_pipeline.stop()
             print("🛑 RealSense kamera kapatıldı")
 
 def capture_webcam_photo():
     """Normal webcam'den RGB fotoğraf çek"""
-    global camera
+    temp_camera = None
     
     try:
         # Çalışan kamera indexini bul
@@ -967,19 +967,19 @@ def capture_webcam_photo():
             return None
         
         # Kamerayı aç
-        camera = cv2.VideoCapture(working_camera_index)
-        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        camera.set(cv2.CAP_PROP_FPS, 30)
+        temp_camera = cv2.VideoCapture(working_camera_index)
+        temp_camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        temp_camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        temp_camera.set(cv2.CAP_PROP_FPS, 30)
         
         # Kameranın oturması için birkaç frame atla
         for i in range(10):
-            ret, frame = camera.read()
+            ret, frame = temp_camera.read()
             if not ret:
                 continue
         
         # Son RGB frame'i al
-        ret, frame = camera.read()
+        ret, frame = temp_camera.read()
         
         if not ret or frame is None:
             return None
@@ -995,8 +995,8 @@ def capture_webcam_photo():
         return None
     
     finally:
-        if camera:
-            camera.release()
+        if temp_camera:
+            temp_camera.release()
             print("🛑 Webcam kapatıldı")
 
 if __name__ == '__main__':
