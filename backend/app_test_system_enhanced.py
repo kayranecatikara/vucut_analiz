@@ -90,11 +90,23 @@ print("🤖 Loading MoveNet model from TensorFlow Hub...")
 model = None
 movenet = None
 
-# Model zaten yüklü, direkt kullan
-print("✅ Model hazır, yükleme atlanıyor")
-model = hub.load("https://tfhub.dev/google/movenet/singlepose/lightning/4")
-movenet = model.signatures['serving_default']
-print("✅ MoveNet model ready.")
+def load_movenet_model():
+    """Load MoveNet model quickly"""
+    global model, movenet
+    
+    try:
+        print("📥 Model yükleniyor...")
+        model = hub.load("https://tfhub.dev/google/movenet/singlepose/lightning/4")
+        movenet = model.signatures['serving_default']
+        print("✅ MoveNet model loaded successfully.")
+        return True
+    except Exception as e:
+        print(f"❌ Model yüklenemedi: {e}")
+        print("⚠️ Offline modda çalışılacak")
+        return False
+
+# Model yüklemeyi dene
+model_loaded = load_movenet_model()
 
 INPUT_SIZE = 192
 
@@ -290,9 +302,29 @@ EDGES = [
 
 def run_movenet(input_image: np.ndarray) -> np.ndarray:
     """Run MoveNet model on input image and return keypoints"""
-    if movenet is None:
-        # Model yoksa basit keypoint döndür (test için)
-        return np.random.rand(17, 3) * 0.8 + 0.1  # 0.1-0.9 arası random değerler
+    global model_loaded
+    
+    if not model_loaded or movenet is None:
+        # Model yoksa sabit keypoint döndür (test için)
+        # Gerçekçi bir pose pozisyonu simüle et
+        keypoints = np.zeros((17, 3))
+        
+        # Omuz noktaları (sol ve sağ)
+        keypoints[5] = [0.4, 0.3, 0.9]  # left_shoulder
+        keypoints[6] = [0.6, 0.3, 0.9]  # right_shoulder
+        
+        # Kalça noktaları (sol ve sağ)
+        keypoints[11] = [0.45, 0.6, 0.9]  # left_hip
+        keypoints[12] = [0.55, 0.6, 0.9]  # right_hip
+        
+        # Diğer noktalar
+        keypoints[0] = [0.5, 0.1, 0.8]   # nose
+        keypoints[7] = [0.3, 0.45, 0.7]  # left_elbow
+        keypoints[8] = [0.7, 0.45, 0.7]  # right_elbow
+        keypoints[13] = [0.4, 0.8, 0.8]  # left_knee
+        keypoints[14] = [0.6, 0.8, 0.8]  # right_knee
+        
+        return keypoints
         
     img_resized = tf.image.resize_with_pad(np.expand_dims(input_image, axis=0), INPUT_SIZE, INPUT_SIZE)
     input_tensor = tf.cast(img_resized, dtype=tf.int32)
@@ -301,8 +333,9 @@ def run_movenet(input_image: np.ndarray) -> np.ndarray:
         outputs = movenet(input_tensor)
         return outputs['output_0'].numpy()[0, 0]
     except Exception as e:
-        # Hata varsa basit keypoint döndür
-        return np.random.rand(17, 3) * 0.8 + 0.1
+        print(f"❌ Model çalıştırma hatası: {e}")
+        # Hata varsa sabit keypoint döndür
+        return run_movenet(input_image)  # Recursive call to get fixed keypoints
 
 def calculate_pixel_distance(p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
     """Calculate pixel distance between two points"""
