@@ -77,7 +77,7 @@ def initialize_food_analyzer():
     """Food analyzer'ı başlat"""
     global food_analyzer
     try:
-        api_key = "29b4f47bf7184373bbe0c8eb1d102529"
+        api_key = "920c5f81c0264c2ca92a1d916e604a7694c560e9"
         food_analyzer = FoodAnalyzer(api_key)
         print("✅ Food analyzer başlatıldı")
         return True
