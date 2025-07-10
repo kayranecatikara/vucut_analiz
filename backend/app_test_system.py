@@ -1457,8 +1457,7 @@ if __name__ == '__main__':
     print("   - Otomatik kamera algılama")
     print("   - Vücut tipi analizi")
     print("   - Sol ekranda ölçüm verileri")
-                    # RGB görüntü al
-                    food_image = np.asanyarray(color_frame.get_data())
+    print("   - RGB görüntü al")
     print("   - Gelişmiş omuz algılama")
     print("   - Kararlı WebSocket bağlantısı")
     print("   - Tamamen düzeltilmiş timeout yönetimi")
