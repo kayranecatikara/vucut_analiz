@@ -279,7 +279,7 @@ def initialize_food_analyzer():
     """Food analyzer'ı başlat"""
     global food_analyzer
     try:
-        api_key = "920c5f81c0264c2ca92a1d916e604a7694c560e9"
+        api_key = "29b4f47bf7184373bbe0c8eb1d102529"
         food_analyzer = FoodAnalyzer(api_key)
         print("✅ Food analyzer başlatıldı")
         return True
@@ -2557,9 +2557,6 @@ def initialize_food_analyzer():
         return False
 
 if __name__ == '__main__':
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
-    
     # Food analyzer'ı başlat
     initialize_food_analyzer()
     
@@ -2580,7 +2577,7 @@ if __name__ == '__main__':
     print("   - Kalori hesaplama özelliği")
     print("   - Yemek fotoğrafı çekme")
     print()
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    
     if REALSENSE_AVAILABLE:
         print("✅ RealSense support: Available")
     else:
