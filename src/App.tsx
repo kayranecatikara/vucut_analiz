@@ -35,26 +35,29 @@ function App() {
   // WebSocket bağlantısı ve otomatik yeniden bağlanma
   const connectWebSocket = () => {
     try {
-      // WebContainer ortamında doğru backend URL'ini oluştur
-      const backendUrl = window.location.origin.replace(':3000', ':5000');
+      // Backend URL'ini düzelt
+      const backendUrl = 'http://localhost:5000';
       const ws = io(backendUrl, {
         transports: ['websocket'],
         autoConnect: true,
         reconnection: true,
-        reconnectionDelay: 2000,
-        reconnectionAttempts: 10,
-        timeout: 20000,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
+        timeout: 10000,
         forceNew: false
       });
       
       ws.on('connect', () => {
-        console.log('✅ WebSocket bağlantısı kuruldu');
+        console.log('✅ WebSocket bağlantısı kuruldu:', backendUrl);
         setConnectionStatus({
           connected: true,
           message: 'Bağlantı başarılı',
           timestamp: Date.now()
         });
         setSocket(ws);
+        
+        // Bağlantı test et
+        ws.emit('ping', { timestamp: Date.now() });
       });
 
       // Heartbeat sistemi
@@ -65,17 +68,20 @@ function App() {
       }, 30000); // 30 saniyede bir ping gönder
 
       ws.on('pong', (data) => {
-        // Pong alındı, bağlantı sağlıklı
+        console.log('💓 Pong alındı, bağlantı sağlıklı');
       });
 
       ws.on('heartbeat', (data) => {
-        // Server'dan heartbeat alındı, bağlantı sağlıklı
         console.log('💓 Heartbeat alındı');
       });
 
       ws.on('connection_ok', (data) => {
-        // Bağlantı durumu onaylandı
         console.log('✅ Bağlantı durumu: OK');
+        setConnectionStatus({
+          connected: true,
+          message: 'Bağlantı onaylandı',
+          timestamp: Date.now()
+        });
       });
 
       ws.on('test_frame', (data) => {
@@ -208,7 +214,7 @@ function App() {
         clearInterval(heartbeat);
         setConnectionStatus({
           connected: false,
-          message: 'Bağlantı kesildi - Yeniden bağlanıyor...',
+          message: 'Bağlantı kesildi',
           timestamp: Date.now()
         });
         setSocket(null);
@@ -217,8 +223,6 @@ function App() {
           timeLeft: 0,
           completed: false
         });
-        
-        // Otomatik yeniden bağlanma socket.io tarafından yapılacak
       });
 
       ws.on('reconnect', (attemptNumber) => {
@@ -252,7 +256,7 @@ function App() {
         console.error('WebSocket hatası:', error);
         setConnectionStatus({
           connected: false,
-          message: 'Bağlantı hatası',
+          message: `Bağlantı hatası: ${error}`,
           timestamp: Date.now()
         });
       });
@@ -261,7 +265,7 @@ function App() {
       console.error('WebSocket bağlantısı kurulamadı:', error);
       setConnectionStatus({
         connected: false,
-        message: 'Bağlantı kurulamadı',
+        message: `Bağlantı kurulamadı: ${error}`,
         timestamp: Date.now()
       });
     }
