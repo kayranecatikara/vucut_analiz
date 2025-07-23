@@ -2537,6 +2537,7 @@ def heartbeat_monitor():
 @socketio.on('connect')
 def handle_connect(auth):
     global connected_clients
+    socketio.emit('connection_ok', {'status': 'connected'})
     
     client_id = request.sid
     connected_clients.add(client_id)
@@ -2555,6 +2556,14 @@ def handle_disconnect():
     
     client_id = request.sid
     connected_clients.discard(client_id)
+@socketio.on('ping')
+def handle_ping(data):
+    socketio.emit('pong', {'timestamp': time.time()})
+
+@socketio.on('check_connection')
+def handle_check_connection(data):
+    socketio.emit('connection_ok', {'status': 'connected', 'timestamp': time.time()})
+
     
     # Stop test if no clients connected
     if len(connected_clients) == 0:
@@ -2659,15 +2668,7 @@ if __name__ == '__main__':
     print("   - Vücut tipi analizi")
     print("   - Sol ekranda ölçüm verileri")
     print("   - Yemek fotoğrafı ile kalori hesaplama")
-    print("   - Yemek fotoğrafı analizi ve kalori hesaplama")
-    print("   - Yemek fotoğrafı analizi ve kalori hesaplama")
-    print("   - RGB görüntü al")
-    print("   - Gelişmiş omuz algılama")
-    print("   - Kararlı WebSocket bağlantısı")
-    print("   - Tamamen düzeltilmiş timeout yönetimi")
-    print("   - Optimize edilmiş hata yakalama")
-    print("   - Kalori hesaplama özelliği")
-    print("   - Yemek fotoğrafı çekme")
+    print("   - WebSocket bağlantısı")
     print()
     
     if REALSENSE_AVAILABLE:
@@ -2676,6 +2677,7 @@ if __name__ == '__main__':
         print("⚠️ RealSense support: Not available (webcam only)")
     
     print()
+    print("🌐 Server başlatılıyor: http://localhost:5000")
     try:
         socketio.run(app, host='0.0.0.0', port=5000, debug=False, 
                     use_reloader=False, log_output=False, allow_unsafe_werkzeug=True)
